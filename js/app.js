@@ -6,7 +6,7 @@
 
   // ---------------- Analysis switching (ribbon tabs + project tree) ----------------
   let current = "slope";
-  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation" };
+  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", materials: "Materials library" };
   const statusStore = {};
   function setStatus(mod, main, right) {
     statusStore[mod] = { main, right: right || "" };
@@ -24,6 +24,7 @@
     document.querySelectorAll(".propset").forEach(s => s.classList.toggle("active", s.id === "props-" + mod));
     document.querySelectorAll(".vp").forEach(v => v.classList.toggle("active", v.id === "vp-" + mod));
     restoreStatus(mod);
+    if (typeof onViewChanged === "function") onViewChanged(mod);
     requestAnimationFrame(() => { if (last[mod]) draw[mod](last[mod]); });
   }
   document.querySelectorAll(".rtab, .tnode.child").forEach(t => t.addEventListener("click", () => switchTo(t.dataset.tab)));
@@ -78,6 +79,7 @@
         <tr><td>Radius</td><td>${out.best.R.toFixed(1)} m</td></tr>
         <tr><td>Slices used</td><td>${out.best.slices.length}</td></tr>
        </table>`;
+    disclaim("slope", "s_result");
     draw.slope(last.slope);
   }
   draw.slope = ({ p, out }) => {
@@ -153,6 +155,7 @@
         <tr><td>Grid</td><td>${s.nx}×${s.ny}</td></tr>
        </table>`;
     setStatus("seep", `Seepage — flow q = ${s.q.toFixed(3)} m³/day/m`, `exit gradient ${s.exitGrad.toFixed(3)}`);
+    disclaim("seep", "p_result");
     draw.seep(last.seep);
   }
   draw.seep = ({ p, s }) => {
@@ -224,6 +227,7 @@
         <tr><td>Nodes / elements</td><td>${m.NX*m.NY} / ${m.tris.length}</td></tr>
        </table>`;
     setStatus("sigma", `Stress–deformation — max settlement ${(m.maxSettle*1000).toFixed(1)} mm`, `${m.tris.length} elements`);
+    disclaim("sigma", "g_result");
     draw.sigma(last.sigma);
   }
   draw.sigma = ({ p, m }) => {
@@ -426,8 +430,139 @@
   showEmptyState();
   refreshProvLabel();
 
+  // ================= Phase A: project, materials, capability maturity =================
+  let project = window.Project ? Project.newProject() : null;
+  let currentPath = null;
+
+  function methodIdFor(mod) {
+    if (mod === "slope") return $("s_method").value === "fellenius" ? "slope.fellenius" : "slope.bishop";
+    if (mod === "seep") return "seep.steady";
+    if (mod === "sigma") return "sigma.elastic";
+    return null;
+  }
+  function setBadge(mod) {
+    const el = document.getElementById("badge-" + mod);
+    if (!el || !window.Capabilities) return;
+    const c = Capabilities.byId(methodIdFor(mod));
+    if (!c) { el.textContent = ""; return; }
+    const m = Capabilities.maturityInfo(c.maturity);
+    el.textContent = m.label; el.style.background = m.color;
+  }
+  function disclaim(mod, resultId) {
+    const el = $(resultId); if (!el || !window.Capabilities) return;
+    const old = el.querySelector(".disclaimer"); if (old) old.remove();
+    const text = Capabilities.resultDisclaimer(methodIdFor(mod));
+    if (text) { const d = document.createElement("div"); d.className = "disclaimer"; d.textContent = text; el.appendChild(d); }
+  }
+  function onViewChanged(mod) {
+    const compute = $("btn_compute");
+    if (mod === "materials") { compute.disabled = true; compute.style.opacity = .4; }
+    else { compute.disabled = false; compute.style.opacity = 1; setBadge(mod); }
+  }
+
+  // ---- Materials library ----
+  function matField(label, f, val) { return `<label>${label}<input type="number" data-f="${f}" value="${val}" step="any"></label>`; }
+  function renderMaterials() {
+    if (!project) return;
+    const host = $("mat_table"); host.innerHTML = "";
+    project.materials.forEach((mat, i) => {
+      const row = document.createElement("div"); row.className = "mat-row";
+      row.innerHTML =
+        `<div class="mat-head"><input data-f="name" value="${mat.name}"><button class="mat-del" title="Delete">✕</button></div>
+         <div class="mat-grid">
+           ${matField("γ (kN/m³)", "gamma", mat.gamma)}${matField("c′ (kPa)", "c", mat.c)}
+           ${matField("φ′ (°)", "phi", mat.phi)}${matField("E (MPa)", "E", mat.E)}
+           ${matField("ν", "nu", mat.nu)}${matField("k (m/day)", "k", mat.k)}
+         </div>`;
+      row.querySelectorAll("input[data-f]").forEach(inp => inp.addEventListener("change", () => {
+        const f = inp.dataset.f; mat[f] = f === "name" ? inp.value : parseFloat(inp.value);
+        Project.bumpRevision(project); populateMatSelectors();
+      }));
+      row.querySelector(".mat-del").addEventListener("click", () => {
+        if (project.materials.length <= 1) return;
+        project.materials.splice(i, 1); Project.bumpRevision(project); renderMaterials(); populateMatSelectors();
+      });
+      host.appendChild(row);
+    });
+  }
+  function populateMatSelectors() {
+    if (!project) return;
+    [["s_mat", "slope"], ["p_mat", "seep"], ["g_mat", "sigma"]].forEach(([id, mod]) => {
+      const sel = $(id); if (!sel) return;
+      const cur = project.analyses[mod].materialId || (project.materials[0] && project.materials[0].id);
+      sel.innerHTML = project.materials.map(m => `<option value="${m.id}">${m.name}</option>`).join("");
+      if (cur) sel.value = cur;
+    });
+  }
+  function applyMaterialToAnalysis(mod, matId) {
+    const mat = Project.materialById(project, matId); if (!mat) return;
+    project.analyses[mod].materialId = matId;
+    if (mod === "slope") { $("s_gamma").value = mat.gamma; $("s_c").value = mat.c; $("s_phi").value = mat.phi; }
+    if (mod === "seep") { $("p_k").value = mat.k; }
+    if (mod === "sigma") { $("g_gamma").value = mat.gamma; $("g_E").value = mat.E; $("g_nu").value = mat.nu; }
+    Project.bumpRevision(project);
+  }
+
+  // ---- Project <-> DOM sync and file operations ----
+  const DOM_MAP = {
+    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", ru: "s_ru", method: ["s_method", "str"], nslices: "s_nslices", grid: "s_grid" },
+    seep:  { materialId: ["p_mat", "str"], W: "p_W", D: "p_D", nx: "p_nx", hu: "p_hu", hd: "p_hd", k: "p_k", wall_on: ["p_wall_on", "bool"], wall_x: "p_wall_x", wall_d: "p_wall_d" },
+    sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] }
+  };
+  function readField(spec) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el) return undefined; return t === "bool" ? el.checked : t === "str" ? el.value : parseFloat(el.value); }
+  function writeField(spec, val) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el || val == null) return; if (t === "bool") el.checked = !!val; else el.value = val; }
+  function syncDomToProject() { for (const mod in DOM_MAP) for (const k in DOM_MAP[mod]) { const v = readField(DOM_MAP[mod][k]); if (v !== undefined) project.analyses[mod][k] = v; } }
+  function applyProjectToDom() {
+    for (const mod in DOM_MAP) { populateMatSelectors(); for (const k in DOM_MAP[mod]) writeField(DOM_MAP[mod][k], project.analyses[mod][k]); }
+    $("tree_name").textContent = project.name || "Untitled project";
+    renderMaterials(); populateMatSelectors();
+  }
+  function recomputeAll() { runSeep(); runSigma(); runSlope(); if (current !== "materials") switchTo(current); }
+  function note(msg) { $("status_right").textContent = msg; }
+
+  function pickFile() { return new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = ".gcp,application/json"; i.onchange = () => res(i.files[0] || null); i.click(); }); }
+  function downloadFile(name, content) { const b = new Blob([content], { type: "application/json" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); }
+
+  function doNew() { project = Project.newProject(); currentPath = null; applyProjectToDom(); recomputeAll(); note("New project"); }
+  async function doOpen() {
+    try {
+      let content;
+      if (window.gcDesktop && gcDesktop.isDesktop) { const r = await gcDesktop.openProject(); if (!r) return; content = r.content; currentPath = r.path; }
+      else { const f = await pickFile(); if (!f) return; content = await f.text(); currentPath = null; }
+      project = Project.deserialize(content); applyProjectToDom(); recomputeAll(); note("Opened " + (project.name || "project"));
+    } catch (e) { alert("Open failed: " + e.message); }
+  }
+  async function doSave(as) {
+    syncDomToProject(); const content = Project.serialize(project);
+    try {
+      if (window.gcDesktop && gcDesktop.isDesktop) {
+        if (!as && currentPath) { await gcDesktop.saveProject(content, currentPath); note("Saved"); }
+        else { const r = await gcDesktop.saveProjectAs(content, project.name); if (r && r.path) { currentPath = r.path; note("Saved"); } }
+      } else { downloadFile((project.name || "project") + ".gcp", content); note("Downloaded .gcp"); }
+    } catch (e) { alert("Save failed: " + e.message); }
+  }
+
+  function setupProjectUI() {
+    if (!project) return;
+    renderMaterials(); populateMatSelectors();
+    $("mat_add").addEventListener("click", () => {
+      project.materials.push({ id: Project.uid("mat"), name: "New material", gamma: 18, c: 5, phi: 28, E: 30, nu: 0.3, k: 1.0 });
+      Project.bumpRevision(project); renderMaterials(); populateMatSelectors();
+    });
+    $("s_mat").addEventListener("change", () => applyMaterialToAnalysis("slope", $("s_mat").value));
+    $("p_mat").addEventListener("change", () => applyMaterialToAnalysis("seep", $("p_mat").value));
+    $("g_mat").addEventListener("change", () => applyMaterialToAnalysis("sigma", $("g_mat").value));
+    $("s_method").addEventListener("change", () => setBadge("slope"));
+    $("btn_new").addEventListener("click", doNew);
+    $("btn_open").addEventListener("click", doOpen);
+    $("btn_save").addEventListener("click", () => doSave(false));
+    if (window.gcDesktop && gcDesktop.onMenu) gcDesktop.onMenu(a => { const m = { new: doNew, open: doOpen, save: () => doSave(false), saveAs: () => doSave(true) }; if (m[a]) m[a](); });
+    $("tree_name").textContent = project.name;
+  }
+
   // ---------------- First run ----------------
   window.addEventListener("resize", () => { if (last[current]) draw[current](last[current]); });
+  setupProjectUI();
   runSeep(); runSigma(); runSlope();   // slope last so the status bar reflects the default view
   switchTo("slope");
 })();

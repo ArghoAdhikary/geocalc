@@ -3,20 +3,25 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>GeoCalc</title>
+<title>GeoCalc Pro</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
 <!-- Ribbon -->
 <div class="ribbon">
-  <div class="ribbon-brand"><span class="logo">▟</span><span class="brand-name">GeoCalc</span></div>
+  <div class="ribbon-brand"><span class="logo">▟</span><span class="brand-name">GeoCalc <b>Pro</b></span></div>
   <div class="ribbon-tabs" id="ribbon_tabs">
     <button class="rtab active" data-tab="slope">Slope Stability</button>
     <button class="rtab" data-tab="seep">Seepage</button>
     <button class="rtab" data-tab="sigma">Stress–Deformation</button>
   </div>
   <div class="ribbon-actions">
+    <div class="file-grp">
+      <button id="btn_new" class="ribbon-txt" title="New project (Cmd/Ctrl+N)">New</button>
+      <button id="btn_open" class="ribbon-txt" title="Open project (Cmd/Ctrl+O)">Open</button>
+      <button id="btn_save" class="ribbon-txt" title="Save project (Cmd/Ctrl+S)">Save</button>
+    </div>
     <button id="btn_compute" class="compute">▶ Compute</button>
     <button id="btn_chat" class="ribbon-ico" title="Toggle AI assistant">💬</button>
   </div>
@@ -26,21 +31,36 @@
 
   <!-- Project tree -->
   <nav class="tree">
-    <div class="tree-title">Analyses</div>
+    <div class="tree-title">Project</div>
     <ul class="tree-list">
-      <li class="tnode root">GeoCalc project</li>
+      <li class="tnode root" id="tree_name">Untitled project</li>
+      <li class="tnode group">Data</li>
+      <li class="tnode child" data-tab="materials"><span class="ti">▣</span> Materials</li>
+      <li class="tnode group">Analyses</li>
       <li class="tnode child active" data-tab="slope"><span class="ti">▦</span> Slope stability</li>
       <li class="tnode child" data-tab="seep"><span class="ti">≈</span> Seepage</li>
       <li class="tnode child" data-tab="sigma"><span class="ti">◫</span> Stress–deformation</li>
     </ul>
-    <div class="tree-note">Simplified educational solvers — verify against established methods before any real design decision.</div>
+    <div class="tree-note">Phase A platform build. Solver results are <b>demonstration</b> output from methods that are <i>implemented but not benchmark-verified</i> — not for design use.</div>
   </nav>
 
   <!-- Properties (inputs) -->
   <aside class="props">
+    <!-- MATERIALS -->
+    <div id="props-materials" class="propset">
+      <div class="props-title">Materials library <small>shared by all analyses</small></div>
+      <div id="mat_table" class="mat-table"></div>
+      <button id="mat_add" class="minor">+ Add material</button>
+      <p class="note">Edit values here; analyses pick a material and inherit its properties (you can still override per analysis).</p>
+    </div>
+
     <!-- SLOPE -->
     <div id="props-slope" class="propset active">
-      <div class="props-title">Slope stability <small>method of slices</small></div>
+      <div class="props-title">Slope stability <small>method of slices</small> <span id="badge-slope" class="badge"></span></div>
+      <fieldset>
+        <legend>Material</legend>
+        <label>Soil material<select id="s_mat" class="matsel"></select></label>
+      </fieldset>
       <fieldset>
         <legend>Slope geometry</legend>
         <label>Slope height H (m)<input id="s_H" type="number" value="10" step="0.5"></label>
@@ -49,7 +69,7 @@
         <label>Toe length (m)<input id="s_toe" type="number" value="14" step="1"></label>
       </fieldset>
       <fieldset>
-        <legend>Soil</legend>
+        <legend>Soil strength</legend>
         <label>Unit weight γ (kN/m³)<input id="s_gamma" type="number" value="18" step="0.5"></label>
         <label>Cohesion c′ (kPa)<input id="s_c" type="number" value="10" step="1"></label>
         <label>Friction angle φ′ (°)<input id="s_phi" type="number" value="25" step="1"></label>
@@ -75,7 +95,7 @@
 
     <!-- SEEP -->
     <div id="props-seep" class="propset">
-      <div class="props-title">Seepage <small>2D finite difference</small></div>
+      <div class="props-title">Seepage <small>2D finite difference</small> <span id="badge-seep" class="badge"></span></div>
       <fieldset>
         <legend>Domain</legend>
         <label>Width (m)<input id="p_W" type="number" value="40" step="1"></label>
@@ -84,6 +104,7 @@
       </fieldset>
       <fieldset>
         <legend>Heads &amp; soil</legend>
+        <label>Soil material<select id="p_mat" class="matsel"></select></label>
         <label>Upstream head (m)<input id="p_hu" type="number" value="16" step="0.5"></label>
         <label>Downstream head (m)<input id="p_hd" type="number" value="4" step="0.5"></label>
         <label>Permeability k (m/day)<input id="p_k" type="number" value="1.0" step="0.1"></label>
@@ -99,7 +120,7 @@
 
     <!-- SIGMA -->
     <div id="props-sigma" class="propset">
-      <div class="props-title">Stress–deformation <small>plane-strain FEM</small></div>
+      <div class="props-title">Stress–deformation <small>plane-strain FEM</small> <span id="badge-sigma" class="badge"></span></div>
       <fieldset>
         <legend>Domain</legend>
         <label>Width (m)<input id="g_W" type="number" value="20" step="1"></label>
@@ -108,6 +129,7 @@
       </fieldset>
       <fieldset>
         <legend>Material</legend>
+        <label>Soil material<select id="g_mat" class="matsel"></select></label>
         <label>Young's modulus E (MPa)<input id="g_E" type="number" value="30" step="1"></label>
         <label>Poisson's ratio ν<input id="g_nu" type="number" value="0.3" step="0.05" min="0" max="0.49"></label>
         <label>Unit weight γ (kN/m³)<input id="g_gamma" type="number" value="18" step="0.5"></label>
@@ -134,6 +156,7 @@
   <!-- Viewport -->
   <main class="viewport">
     <div class="vp-stage">
+      <div id="vp-materials" class="vp"><div class="vp-note"><b>Materials library</b><br>Define soils here, then select them in each analysis. This is project data, not a solver — there is nothing to compute.</div></div>
       <div id="vp-slope" class="vp active"><canvas id="s_canvas"></canvas></div>
       <div id="vp-seep" class="vp"><canvas id="p_canvas"></canvas></div>
       <div id="vp-sigma" class="vp"><canvas id="g_canvas"></canvas></div>
@@ -197,6 +220,10 @@
   </form>
 </dialog>
 
+<script>window.GC_VERSION = "2.0.0";</script>
+<script src="js/core/units.js"></script>
+<script src="js/core/capabilities.js"></script>
+<script src="js/core/project.js"></script>
 <script src="js/linalg.js"></script>
 <script src="js/slope.js"></script>
 <script src="js/seep.js"></script>
