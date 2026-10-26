@@ -8,7 +8,7 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
+    "build": "electron-builder --publish never",
     "dist": "electron-builder --mac dir"
   },
   "build": {
