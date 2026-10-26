@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GeoCalc</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- Ribbon -->
+<div class="ribbon">
+  <div class="ribbon-brand"><span class="logo">▟</span><span class="brand-name">GeoCalc</span></div>
+  <div class="ribbon-tabs" id="ribbon_tabs">
+    <button class="rtab active" data-tab="slope">Slope Stability</button>
+    <button class="rtab" data-tab="seep">Seepage</button>
+    <button class="rtab" data-tab="sigma">Stress–Deformation</button>
+  </div>
+  <div class="ribbon-actions">
+    <button id="btn_compute" class="compute">▶ Compute</button>
+    <button id="btn_chat" class="ribbon-ico" title="Toggle AI assistant">💬</button>
+  </div>
+</div>
+
+<div class="shell">
+
+  <!-- Project tree -->
+  <nav class="tree">
+    <div class="tree-title">Analyses</div>
+    <ul class="tree-list">
+      <li class="tnode root">GeoCalc project</li>
+      <li class="tnode child active" data-tab="slope"><span class="ti">▦</span> Slope stability</li>
+      <li class="tnode child" data-tab="seep"><span class="ti">≈</span> Seepage</li>
+      <li class="tnode child" data-tab="sigma"><span class="ti">◫</span> Stress–deformation</li>
+    </ul>
+    <div class="tree-note">Simplified educational solvers — verify against established methods before any real design decision.</div>
+  </nav>
+
+  <!-- Properties (inputs) -->
+  <aside class="props">
+    <!-- SLOPE -->
+    <div id="props-slope" class="propset active">
+      <div class="props-title">Slope stability <small>method of slices</small></div>
+      <fieldset>
+        <legend>Slope geometry</legend>
+        <label>Slope height H (m)<input id="s_H" type="number" value="10" step="0.5"></label>
+        <label>Slope angle β (°)<input id="s_beta" type="number" value="34" step="1"></label>
+        <label>Crest length (m)<input id="s_crest" type="number" value="12" step="1"></label>
+        <label>Toe length (m)<input id="s_toe" type="number" value="14" step="1"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Soil</legend>
+        <label>Unit weight γ (kN/m³)<input id="s_gamma" type="number" value="18" step="0.5"></label>
+        <label>Cohesion c′ (kPa)<input id="s_c" type="number" value="10" step="1"></label>
+        <label>Friction angle φ′ (°)<input id="s_phi" type="number" value="25" step="1"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Water</legend>
+        <label>Pore pressure ratio r<sub>u</sub><input id="s_ru" type="number" value="0.25" step="0.05" min="0" max="0.7"></label>
+        <span class="note">r<sub>u</sub> = u / (γ·h). Use 0 for dry.</span>
+      </fieldset>
+      <fieldset>
+        <legend>Method &amp; search</legend>
+        <label>Method
+          <select id="s_method">
+            <option value="bishop">Bishop simplified</option>
+            <option value="fellenius">Fellenius (ordinary)</option>
+          </select>
+        </label>
+        <label>Slices<input id="s_nslices" type="number" value="30" step="5" min="8" max="80"></label>
+        <label>Search grid<input id="s_grid" type="number" value="14" step="1" min="4" max="24"></label>
+      </fieldset>
+      <div id="s_result" class="result"></div>
+    </div>
+
+    <!-- SEEP -->
+    <div id="props-seep" class="propset">
+      <div class="props-title">Seepage <small>2D finite difference</small></div>
+      <fieldset>
+        <legend>Domain</legend>
+        <label>Width (m)<input id="p_W" type="number" value="40" step="1"></label>
+        <label>Depth (m)<input id="p_D" type="number" value="20" step="1"></label>
+        <label>Grid cells (across)<input id="p_nx" type="number" value="80" step="5" min="20" max="160"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Heads &amp; soil</legend>
+        <label>Upstream head (m)<input id="p_hu" type="number" value="16" step="0.5"></label>
+        <label>Downstream head (m)<input id="p_hd" type="number" value="4" step="0.5"></label>
+        <label>Permeability k (m/day)<input id="p_k" type="number" value="1.0" step="0.1"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Cutoff wall (impermeable)</legend>
+        <label><input id="p_wall_on" type="checkbox" checked> Include wall</label>
+        <label>Position x (m)<input id="p_wall_x" type="number" value="20" step="1"></label>
+        <label>Depth from top (m)<input id="p_wall_d" type="number" value="12" step="1"></label>
+      </fieldset>
+      <div id="p_result" class="result"></div>
+    </div>
+
+    <!-- SIGMA -->
+    <div id="props-sigma" class="propset">
+      <div class="props-title">Stress–deformation <small>plane-strain FEM</small></div>
+      <fieldset>
+        <legend>Domain</legend>
+        <label>Width (m)<input id="g_W" type="number" value="20" step="1"></label>
+        <label>Height (m)<input id="g_H" type="number" value="10" step="1"></label>
+        <label>Mesh (cells across)<input id="g_nx" type="number" value="18" step="2" min="6" max="30"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Material</legend>
+        <label>Young's modulus E (MPa)<input id="g_E" type="number" value="30" step="1"></label>
+        <label>Poisson's ratio ν<input id="g_nu" type="number" value="0.3" step="0.05" min="0" max="0.49"></label>
+        <label>Unit weight γ (kN/m³)<input id="g_gamma" type="number" value="18" step="0.5"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Surcharge (top)</legend>
+        <label>Pressure q (kPa)<input id="g_q" type="number" value="50" step="5"></label>
+        <label>Width of load (m)<input id="g_qw" type="number" value="6" step="1"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Show</legend>
+        <label>Result
+          <select id="g_field">
+            <option value="uy">Vertical settlement</option>
+            <option value="sy">Vertical stress σ<sub>y</sub></option>
+            <option value="sx">Horizontal stress σ<sub>x</sub></option>
+          </select>
+        </label>
+      </fieldset>
+      <div id="g_result" class="result"></div>
+    </div>
+  </aside>
+
+  <!-- Viewport -->
+  <main class="viewport">
+    <div class="vp-stage">
+      <div id="vp-slope" class="vp active"><canvas id="s_canvas"></canvas></div>
+      <div id="vp-seep" class="vp"><canvas id="p_canvas"></canvas></div>
+      <div id="vp-sigma" class="vp"><canvas id="g_canvas"></canvas></div>
+    </div>
+    <div class="statusbar">
+      <span id="status_main">Ready</span>
+      <span id="status_right"></span>
+    </div>
+  </main>
+
+  <!-- AI chat (dockable) -->
+  <aside id="chat" class="chat">
+    <div class="chat-head">
+      <span class="chat-title"><span class="dot"></span> AI assistant</span>
+      <span class="chat-prov" id="chat_prov">Offline</span>
+      <button id="chat_settings" class="chat-ico" title="AI settings">⚙</button>
+      <button id="chat_collapse" class="chat-ico" title="Hide chat">✕</button>
+    </div>
+    <div id="chat_log" class="chat-log"></div>
+    <div class="chat-input">
+      <textarea id="chat_cmd" rows="1" placeholder="Message GeoCalc…  e.g. “set slope angle to 40 and run”"></textarea>
+      <button id="chat_send" title="Send">➤</button>
+    </div>
+  </aside>
+</div>
+
+<button id="chat_launch" class="chat-launch" title="Open AI assistant">💬 AI</button>
+
+<dialog id="ai_dialog">
+  <form method="dialog">
+    <div class="dlg-head">AI assistant settings</div>
+    <div class="dlg-body">
+      <p>The chat works offline with a built-in interpreter for common commands.
+      For full natural-language chat, pick a provider and add its API key. The key
+      is stored only in this browser (localStorage) and sent directly to the
+      provider you choose — never anywhere else.</p>
+      <label>Provider
+        <select id="ai_provider">
+          <option value="offline">Built-in (offline, no key)</option>
+          <option value="claude">Anthropic Claude</option>
+          <option value="openai">OpenAI (ChatGPT)</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="custom">Custom (OpenAI-compatible)</option>
+        </select>
+      </label>
+      <label id="row_key">API key
+        <input id="ai_key" type="password" placeholder="paste your key" autocomplete="off" />
+      </label>
+      <label id="row_model">Model
+        <input id="ai_model" type="text" placeholder="default model" autocomplete="off" />
+      </label>
+      <label id="row_base" style="display:none">Base URL (OpenAI-compatible)
+        <input id="ai_baseurl" type="text" placeholder="https://host/v1" autocomplete="off" />
+      </label>
+      <span class="note" id="prov_note"></span>
+    </div>
+    <div class="dlg-foot">
+      <button class="secondary" value="cancel">Cancel</button>
+      <button class="primary" id="ai_save" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="js/linalg.js"></script>
+<script src="js/slope.js"></script>
+<script src="js/seep.js"></script>
+<script src="js/sigma.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

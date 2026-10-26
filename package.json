@@ -1,0 +1,40 @@
+{
+  "name": "geocalc",
+  "productName": "GeoCalc",
+  "version": "1.0.0",
+  "description": "Geotechnical analysis — slope stability, seepage and stress/FEM, with an AI chat assistant.",
+  "author": "GeoCalc",
+  "license": "MIT",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dist": "electron-builder --mac dir"
+  },
+  "build": {
+    "appId": "com.geocalc.desktop",
+    "productName": "GeoCalc",
+    "directories": { "output": "dist" },
+    "files": [
+      "index.html",
+      "styles.css",
+      "js/**/*",
+      "electron/**/*"
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  }
+}
