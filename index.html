@@ -477,12 +477,15 @@
       of what leaves this device. Treat the reply as untrusted: GeoCalc never applies it to
       your project automatically; numerical results always come from the solver.</p>
       <div class="man-ctx">
-        <b>Include in the prompt:</b>
-        <label class="inline"><input type="checkbox" id="mx_summary" checked> Project summary &amp; units</label>
-        <label class="inline"><input type="checkbox" id="mx_inputs" checked> Current analysis inputs</label>
-        <label class="inline"><input type="checkbox" id="mx_results" checked> Current result</label>
-        <label class="inline"><input type="checkbox" id="mx_materials"> Materials library</label>
-        <label class="inline"><input type="checkbox" id="mx_geometry"> Geometry regions</label>
+        <label class="inline" style="font-weight:600"><input type="checkbox" id="mx_actions"> Let the AI <b>build it</b> — reply as actions GeoCalc can apply (e.g. “make a slope with rapid drawdown”)</label>
+        <div id="mx_ctx_fields">
+          <b>Include in the prompt:</b>
+          <label class="inline"><input type="checkbox" id="mx_summary" checked> Project summary &amp; units</label>
+          <label class="inline"><input type="checkbox" id="mx_inputs" checked> Current analysis inputs</label>
+          <label class="inline"><input type="checkbox" id="mx_results" checked> Current result</label>
+          <label class="inline"><input type="checkbox" id="mx_materials"> Materials library</label>
+          <label class="inline"><input type="checkbox" id="mx_geometry"> Geometry regions</label>
+        </div>
       </div>
       <label>Your question
         <input id="man_question" type="text" placeholder="e.g. explain this factor of safety and suggest checks">
@@ -496,9 +499,13 @@
         <a id="man_open_claude" class="minor man-link" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude ↗</a>
         <a id="man_open_gemini" class="minor man-link" href="https://gemini.google.com/app" target="_blank" rel="noopener">Open Gemini ↗</a>
       </div>
-      <label>Paste the AI's reply here (for your reference — not applied automatically)
+      <label>Paste the AI's reply here
         <textarea id="man_reply" rows="5" placeholder="paste the response…"></textarea>
       </label>
+      <div id="man_action_row" style="display:none">
+        <button type="button" id="man_apply" class="minor">Preview &amp; apply the AI's actions</button>
+        <div id="man_preview" class="man-preview"></div>
+      </div>
     </div>
     <div class="dlg-foot">
       <button class="secondary" value="cancel">Close</button>
@@ -506,7 +513,7 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "11.0.0";</script>
+<script>window.GC_VERSION = "12.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>

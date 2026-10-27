@@ -23,8 +23,16 @@
     s_gamma:  { module: "slope", type: "num", names: ["unit weight", "gamma", "γ", "density"] },
     s_c:      { module: "slope", type: "num", names: ["cohesion", "c", "c'"] },
     s_phi:    { module: "slope", type: "num", names: ["friction angle", "friction", "phi", "φ"] },
-    s_ru:     { module: "slope", type: "num", names: ["pore pressure ratio", "ru", "pore pressure"] },
-    s_method: { module: "slope", type: "enum", names: ["method"], map: { bishop: "bishop", fellenius: "fellenius", ordinary: "fellenius" } },
+    s_ru:     { module: "slope", type: "num", names: ["pore pressure ratio", "ru"] },
+    s_method: { module: "slope", type: "enum", names: ["method"], map: { bishop: "bishop", fellenius: "fellenius", ordinary: "fellenius", spencer: "spencer" } },
+    s_pp:     { module: "slope", type: "enum", names: ["pore pressure model", "pore water", "water condition"],
+                map: { "rapid drawdown": "drawdown", "drawdown": "drawdown", "water table": "watertable", "watertable": "watertable", "phreatic": "watertable", "piezometric": "piezometric" } },
+    s_gammaSat:{ module: "slope", type: "num", names: ["saturated unit weight", "gamma sat", "γsat", "saturated density"] },
+    s_wt:     { module: "slope", type: "num", names: ["water table elevation", "water table", "water level"] },
+    s_wtHigh: { module: "slope", type: "num", names: ["high pool", "pre-drawdown pool", "initial pool", "reservoir level", "full pool"] },
+    s_wtLow:  { module: "slope", type: "num", names: ["low pool", "final pool", "drawn-down level", "drawdown level"] },
+    s_ddSteps:{ module: "slope", type: "num", names: ["drawdown steps"] },
+    s_search: { module: "slope", type: "enum", names: ["search"], map: { grid: "grid", "entry and exit": "entryexit", "entry-exit": "entryexit", entryexit: "entryexit" } },
     s_nslices:{ module: "slope", type: "num", names: ["slices", "number of slices"] },
     s_grid:   { module: "slope", type: "num", names: ["search grid", "grid"] },
     p_W:      { module: "seep", type: "num", names: ["domain width", "width"] },
@@ -49,8 +57,13 @@
                        "sy": "sy", "horizontal stress": "sx", "sx": "sx" } }
   };
 
+  // Clickable action buttons the assistant may trigger.
+  const BUTTONS = {
+    s_dd_run: { module: "slope", desc: "run the rapid-drawdown study (FoS vs drawdown)" }
+  };
+
   const MODULE_WORDS = {
-    slope: ["slope", "stability", "factor of safety", "fos", "slip"],
+    slope: ["slope", "stability", "factor of safety", "fos", "slip", "drawdown"],
     seep:  ["seep", "seepage", "flow", "head", "water flow", "permeab"],
     sigma: ["sigma", "stress", "deform", "settle", "fem", "elastic"]
   };
@@ -108,11 +121,18 @@
       }
     }
     if (mod === "slope") {
-      if (t.includes("bishop")) actions.push({ kind: "set", id: "s_method", value: "bishop" });
+      if (t.includes("spencer")) actions.push({ kind: "set", id: "s_method", value: "spencer" });
+      else if (t.includes("bishop")) actions.push({ kind: "set", id: "s_method", value: "bishop" });
       else if (t.includes("fellenius") || t.includes("ordinary")) actions.push({ kind: "set", id: "s_method", value: "fellenius" });
     }
-    if (/\b(run|compute|calculate|solve|analyse|analyze|go|do it)\b/.test(t))
+    const wantsRun = /\b(run|compute|calculate|solve|analyse|analyze|go|do it|study|build|make|create)\b/.test(t);
+    const isDrawdown = mod === "slope" && (t.includes("drawdown") || actions.some(a => a.id === "s_pp" && a.value === "drawdown"));
+    if (isDrawdown) {
+      if (!actions.some(a => a.id === "s_pp")) actions.push({ kind: "set", id: "s_pp", value: "drawdown" });
+      if (wantsRun) actions.push({ kind: "click", id: "s_dd_run" });
+    } else if (wantsRun) {
       actions.push({ kind: "run", module: mod });
+    }
 
     const seen = {}, cleaned = [];
     for (let i = actions.length - 1; i >= 0; i--) {
@@ -139,6 +159,9 @@
     }
     return lines.join("\n");
   }
+  function buttonsForPrompt() {
+    return Object.entries(BUTTONS).map(([id, b]) => `${id} (${b.module}): ${b.desc}`).join("\n");
+  }
   function systemPrompt(currentModule) {
     return `You translate a user's request into actions for GeoCalc, a geotechnical app with
 three modules: slope (slope stability), seep (seepage), sigma (stress/FEM).
@@ -147,15 +170,22 @@ The current module is "${currentModule}".
 Available settings (field id, module, meaning):
 ${catalogForPrompt()}
 
+Buttons you may click (id, module, what it does):
+${buttonsForPrompt()}
+
 Return ONLY a JSON object, no prose, no markdown fences, of the form:
 {"actions":[ {"kind":"switch","module":"slope|seep|sigma"},
              {"kind":"set","id":"<field id>","value":<number|string|boolean>},
+             {"kind":"click","id":"<button id>"},
              {"kind":"run","module":"slope|seep|sigma"} ],
- "reply":"one short sentence describing what you did"}
+ "reply":"one or two short sentences describing exactly what you set and did"}
 Rules: switch module first if the request targets a different module. Use exact
-field ids. For enum fields use the listed values. Only include a run action if
-the user asked to run/compute/solve. If the user only asks a question, return an
-empty actions array and answer briefly in reply.`;
+field ids and, for enum fields, the listed values. To build a rapid-drawdown
+slope: switch slope, set the geometry/strength fields, set s_pp to "drawdown",
+set s_gammaSat, s_wtHigh and s_wtLow, then click s_dd_run (do NOT use a run
+action for the drawdown study). Otherwise include a run action only if the user
+asked to run/compute/solve. If the user only asks a question, return an empty
+actions array and answer in reply.`;
   }
   function extractJSON(text) {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
@@ -166,9 +196,21 @@ empty actions array and answer briefly in reply.`;
     const actions = (parsed.actions || []).filter(a => {
       if (a.kind === "switch" || a.kind === "run") return ["slope", "seep", "sigma"].includes(a.module);
       if (a.kind === "set") return Object.prototype.hasOwnProperty.call(FIELDS, a.id);
+      if (a.kind === "click") return Object.prototype.hasOwnProperty.call(BUTTONS, a.id);
       return false;
     });
     return { actions, reply: parsed.reply || "Done." };
+  }
+
+  // Human-readable preview of an action list (for the manual action mode).
+  function describeActions(actions) {
+    return actions.map(a => {
+      if (a.kind === "switch") return `Switch to the ${a.module} module`;
+      if (a.kind === "run") return `Run the ${a.module} analysis`;
+      if (a.kind === "click") return (BUTTONS[a.id] ? BUTTONS[a.id].desc : a.id).replace(/^./, c => c.toUpperCase());
+      if (a.kind === "set") { const f = FIELDS[a.id]; return `Set ${f ? f.names[0] : a.id} = ${a.value}`; }
+      return JSON.stringify(a);
+    });
   }
 
   // ---------- Providers ----------
@@ -252,5 +294,14 @@ empty actions array and answer briefly in reply.`;
     }
   }
 
-  global.GeoAI = { interpret, settings, saveSettings, FIELDS, DEFAULT_MODEL };
+  // ---------- Manual action mode (use your own subscription via copy/paste) ----------
+  // Prompt the user pastes into their provider's web app to get an action list.
+  function actionPrompt(currentModule, request) {
+    return systemPrompt(currentModule) +
+      `\n\nUSER REQUEST: ${request || "(describe what to build)"}\n\nReturn ONLY the JSON object.`;
+  }
+  // Parse a pasted model reply into a validated action list (throws on no JSON).
+  function parseActions(text) { return validate(extractJSON(text)); }
+
+  global.GeoAI = { interpret, settings, saveSettings, FIELDS, BUTTONS, DEFAULT_MODEL, actionPrompt, parseActions, describeActions };
 })(window);

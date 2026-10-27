@@ -987,6 +987,7 @@
     getModule: () => current,
     apply(actions) {
       let ranModule = null;
+      const clicks = [];
       for (const a of actions) {
         if (a.kind === "switch") switchTo(a.module);
         else if (a.kind === "set") {
@@ -996,8 +997,10 @@
           else el.value = a.value;
           el.dispatchEvent(new Event("change"));
         } else if (a.kind === "run") ranModule = a.module;
+        else if (a.kind === "click") clicks.push(a.id);
       }
       if (ranModule && RUN[ranModule]) { switchTo(ranModule); RUN[ranModule](); }
+      for (const id of clicks) { const btn = document.getElementById(id); if (btn) { if (id.startsWith("s_")) switchTo("slope"); btn.click(); } }
     }
   };
 
@@ -1111,9 +1114,38 @@
 
   // ---- Manual AI mode dialog (Phase K) ----
   const manDlg = $("ai_manual_dialog");
-  $("chat_manual").addEventListener("click", () => { refreshManualPrompt(); manDlg.showModal(); });
+  function syncManualMode() {
+    const act = $("mx_actions").checked;
+    $("mx_ctx_fields").style.display = act ? "none" : "";
+    $("man_action_row").style.display = act ? "block" : "none";
+    $("man_preview").innerHTML = ""; manPending = null; $("man_apply").textContent = "Preview & apply the AI's actions";
+    refreshManualPrompt();
+  }
+  $("chat_manual").addEventListener("click", () => { syncManualMode(); manDlg.showModal(); });
   ["mx_summary", "mx_inputs", "mx_results", "mx_materials", "mx_geometry"].forEach(id => $(id).addEventListener("change", refreshManualPrompt));
+  $("mx_actions").addEventListener("change", syncManualMode);
   $("man_question").addEventListener("input", refreshManualPrompt);
+  let manPending = null;
+  $("man_apply").addEventListener("click", () => {
+    const prev = $("man_preview");
+    if (!manPending) {
+      let parsed;
+      try { parsed = window.GeoAI.parseActions($("man_reply").value); }
+      catch (e) { prev.innerHTML = `<div class="man-err">Couldn't read actions from the reply: ${e.message}. Make sure “build it” was ticked and you pasted the AI's JSON.</div>`; return; }
+      if (!parsed.actions.length) { prev.innerHTML = `<div class="man-err">No valid actions found in the reply.</div>`; return; }
+      manPending = parsed;
+      const steps = window.GeoAI.describeActions(parsed.actions).map(s => `<li>${s}</li>`).join("");
+      prev.innerHTML = `<div class="man-prev-title">GeoCalc will do (${parsed.actions.length}):</div><ol>${steps}</ol><div class="muted">Review, then click again to apply. Nothing changes until you do.</div>`;
+      $("man_apply").textContent = "Apply now ✓";
+    } else {
+      const parsed = manPending; manPending = null;
+      $("man_apply").textContent = "Preview & apply the AI's actions";
+      manDlg.close();
+      window.GeoApp.apply(parsed.actions);
+      addMsg("bot", "Applied your AI's plan: " + (parsed.reply || "done.") + " — " + window.GeoAI.describeActions(parsed.actions).join("; ") + ".");
+      prev.innerHTML = "";
+    }
+  });
   $("man_copy").addEventListener("click", async () => {
     const text = $("man_prompt").value;
     try { await navigator.clipboard.writeText(text); $("man_copy").textContent = "Copied ✓"; }
@@ -1462,6 +1494,9 @@
     syncDomToProject();
     const mod = activeAnalysis();
     const q = ($("man_question").value || "").trim();
+    if ($("mx_actions").checked && window.GeoAI.actionPrompt) {
+      return window.GeoAI.actionPrompt(mod, q || "Build what I describe.");
+    }
     const lines = [];
     lines.push("You are helping with a geotechnical analysis done in GeoCalc Pro, an independent limit-equilibrium/FE learning tool. Treat the numbers below as given; do not invent standard clause numbers or mandated factors.");
     lines.push("");

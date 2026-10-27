@@ -112,7 +112,7 @@
     return {
       schemaVersion: SCHEMA_VERSION,
       app: APP,
-      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "11.0.0",
+      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "12.0.0",
       name: name || "Untitled project",
       created: now,
       modified: now,

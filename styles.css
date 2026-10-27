@@ -287,3 +287,11 @@ label.inline { flex-direction: row; align-items: center; gap: 7px; }
 .man-actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 4px 0 12px; align-items: center; }
 .man-actions .minor { margin-top: 0; }
 .man-link { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* ---- Manual AI action mode (Phase M) ---- */
+.man-preview { margin-top: 9px; }
+.man-prev-title { font-weight: 700; font-size: 12.5px; margin-bottom: 4px; }
+.man-preview ol { margin: 4px 0 8px; padding-left: 20px; font-size: 12.5px; }
+.man-preview li { margin-bottom: 3px; }
+.man-err { font-size: 12px; color: #9a3326; background: #fde7e3; border: 1px solid #f3c4ba; border-radius: 6px; padding: 8px 10px; }
+#man_action_row .minor { margin-top: 2px; }
