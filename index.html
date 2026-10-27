@@ -48,6 +48,7 @@
       <li class="tnode child" data-tab="consolidation"><span class="ti">⬓</span> Consolidation</li>
       <li class="tnode child" data-tab="dynamics"><span class="ti">∿</span> Dynamics / site response</li>
       <li class="tnode child" data-tab="thermal"><span class="ti">∆</span> Thermal</li>
+      <li class="tnode child" data-tab="flow3d"><span class="ti">⬔</span> 3D flow</li>
     </ul>
     <div class="tree-note">Phase B. <b>Verified</b> methods carry analytical benchmark evidence (see <i>Validation</i>) and apply only within their stated envelope; others are <b>demonstration</b> only. Independent review (AC-09) pending before release.</div>
   </nav>
@@ -230,6 +231,25 @@
       </fieldset>
       <div id="t_result" class="result"></div>
     </div>
+
+    <!-- 3D FLOW -->
+    <div id="props-flow3d" class="propset">
+      <div class="props-title">3D flow <small>steady seepage</small> <span id="badge-flow3d" class="badge"></span></div>
+      <fieldset>
+        <legend>Box domain</legend>
+        <label>Width W (m)<input id="f3_W" type="number" value="40" step="1"></label>
+        <label>Height D (m)<input id="f3_D" type="number" value="20" step="1"></label>
+        <label>Thickness T (m)<input id="f3_T" type="number" value="20" step="1"></label>
+        <label>Cells across (nx)<input id="f3_nx" type="number" value="24" step="2" min="4" max="60"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Heads &amp; soil</legend>
+        <label>Upstream head (m)<input id="f3_hu" type="number" value="16" step="0.5"></label>
+        <label>Downstream head (m)<input id="f3_hd" type="number" value="4" step="0.5"></label>
+        <label>Permeability k (m/day)<input id="f3_k" type="number" value="1.0" step="0.1"></label>
+      </fieldset>
+      <div id="f3_result" class="result"></div>
+    </div>
   </aside>
 
   <!-- Viewport -->
@@ -243,6 +263,7 @@
       <div id="vp-consolidation" class="vp"><canvas id="c_canvas"></canvas></div>
       <div id="vp-dynamics" class="vp"><canvas id="d_canvas"></canvas></div>
       <div id="vp-thermal" class="vp"><canvas id="t_canvas"></canvas></div>
+      <div id="vp-flow3d" class="vp"><canvas id="f3_canvas"></canvas></div>
     </div>
     <div class="statusbar">
       <span id="status_main">Ready</span>
@@ -303,7 +324,7 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "5.0.0";</script>
+<script>window.GC_VERSION = "6.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>
@@ -317,6 +338,7 @@
 <script src="js/geostatic.js"></script>
 <script src="js/dynamics.js"></script>
 <script src="js/thermal.js"></script>
+<script src="js/mesh3d.js"></script>
 <script src="js/core/benchmarks.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/app.js"></script>

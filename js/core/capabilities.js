@@ -166,10 +166,18 @@
       notes: "Transient conduction. Convection, sources, phase change and 2D are later increments."
     },
     {
-      id: "model3d", module: "model3d", method: "Three-dimensional modeling",
+      id: "flow3d.steady", module: "model3d", method: "3D steady flow (volumetric mesh)",
+      dimension: "3D", maturity: "verified", phase: "E", priority: "P0",
+      references: ["3D Laplace flow; finite differences on a hexahedral mesh"],
+      evidence: ["benchmark:flow3d.steady.linear", "benchmark:flow3d.steady.balance"],
+      envelope: "Homogeneous box domain, prescribed-head x-faces, no-flow sides; 3D linear field and global balance verified independently of the 2D solvers.",
+      notes: "3D authoring, volumetric mesh and steady flow with its own benchmark program (3D status not inherited from 2D)."
+    },
+    {
+      id: "model3d", module: "model3d", method: "3D stress / stability / dynamics",
       dimension: "3D", maturity: "conceptual", phase: "E", priority: "P0",
       references: [],
-      notes: "Planned; 3D release status is not inherited from 2D."
+      notes: "Planned; each 3D physics requires its own benchmark program before any Verified label."
     }
   ];
 

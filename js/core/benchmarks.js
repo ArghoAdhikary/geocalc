@@ -341,6 +341,33 @@
         const ref = Th.transientSeries(x, tEnd, L, Ti, Ts, alpha);
         return { computed: r.tempAt(iMid), reference: ref, error: Math.abs(r.tempAt(iMid) - ref) / Math.max(Math.abs(ref), Math.abs(Ti - Ts)) };
       }
+    },
+    {
+      id: "flow3d.steady.linear",
+      method: "flow3d.steady",
+      title: "3D steady flow field vs linear analytical (patch/field)",
+      source: "Analytical 3D Laplace: head linear between prescribed x-faces",
+      tol: 0.01, metric: "normalised RMS head error",
+      run(S) {
+        const r = S.Mesh3D.solveFlow3D({ W: 40, D: 20, T: 20, nx: 20, hu: 16, hd: 4, k: 1 });
+        const m = r.mesh; let se = 0, cnt = 0;
+        for (let kk = 0; kk < m.NZ; kk++) for (let j = 0; j < m.NY; j++) for (let i = 0; i < m.NX; i++) {
+          const hlin = 16 + (4 - 16) * i / m.nx, e = r.headAt(i, j, kk) - hlin; se += e * e; cnt++;
+        }
+        const error = Math.sqrt(se / cnt) / (16 - 4);
+        return { computed: error, reference: 0, error };
+      }
+    },
+    {
+      id: "flow3d.steady.balance",
+      method: "flow3d.steady",
+      title: "3D steady global water balance (inflow = outflow)",
+      source: "Darcy flux across the two prescribed-head faces, FR-VAL-006",
+      tol: 0.001, metric: "normalised balance error",
+      run(S) {
+        const r = S.Mesh3D.solveFlow3D({ W: 40, D: 20, T: 20, nx: 20, hu: 16, hd: 4, k: 1 });
+        return { computed: r.qout, reference: r.qin, error: r.balanceError };
+      }
     }
   ];
 
@@ -348,7 +375,7 @@
     return {
       Slope: global.Slope, Seep: global.Seep, FEFlow: global.FEFlow,
       Consolidation: global.Consolidation, Unsat: global.Unsat, Geostatic: global.Geostatic,
-      Dynamics: global.Dynamics, Thermal: global.Thermal
+      Dynamics: global.Dynamics, Thermal: global.Thermal, Mesh3D: global.Mesh3D
     };
   }
 

@@ -6,7 +6,7 @@
 
   // ---------------- Analysis switching (ribbon tabs + project tree) ----------------
   let current = "slope";
-  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", materials: "Materials library", validation: "Validation" };
+  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", flow3d: "3D flow", materials: "Materials library", validation: "Validation" };
   const statusStore = {};
   function setStatus(mod, main, right) {
     statusStore[mod] = { main, right: right || "" };
@@ -405,8 +405,40 @@
     ctx.fillText("depth x (m)", w - pad - 70, h - pad + 24);
   };
 
+  // ---------------- 3D FLOW (Phase E) ----------------
+  function readFlow3d() { return { W: num("f3_W"), D: num("f3_D"), T: num("f3_T"), nx: num("f3_nx"), hu: num("f3_hu"), hd: num("f3_hd"), k: num("f3_k") }; }
+  function runFlow3d() {
+    const p = readFlow3d(), M = window.Mesh3D;
+    const r = M.solveFlow3D(p), m = r.mesh;
+    const kmid = Math.round(m.nz / 2), slice = r.sliceZ(kmid);
+    last.flow3d = { p, r, slice, kmid };
+    $("f3_result").innerHTML =
+      `<div class="big">${(r.balanceError * 100).toFixed(3)}% <span class="muted" style="font-size:14px">balance error</span></div>
+       <div class="muted">Mid-depth slice (z-plane ${kmid})</div>
+       <table>
+        <tr><td>Nodes / elements</td><td>${m.nNodes.toLocaleString()} / ${m.nElems.toLocaleString()}</td></tr>
+        <tr><td>Grid</td><td>${m.nx}×${m.ny}×${m.nz}</td></tr>
+        <tr><td>Head range</td><td>${r.hMin.toFixed(1)}–${r.hMax.toFixed(1)} m</td></tr>
+       </table>`;
+    setStatus("flow3d", `3D flow — balance error ${(r.balanceError * 100).toFixed(3)}%`, `${m.nNodes.toLocaleString()} nodes`);
+    disclaim("flow3d", "f3_result");
+    draw.flow3d(last.flow3d);
+  }
+  draw.flow3d = ({ r, slice }) => {
+    const { ctx, w, h } = fitCanvas($("f3_canvas")); ctx.clearRect(0, 0, w, h);
+    const m = r.mesh, pad = 36, cw = (w - 2 * pad) / m.nx, ch = (h - 2 * pad) / m.ny, span = (r.hMax - r.hMin) || 1;
+    for (let j = 0; j < m.ny; j++) for (let i = 0; i < m.nx; i++) {
+      const hv = (slice[j * m.NX + i] + slice[j * m.NX + i + 1] + slice[(j + 1) * m.NX + i] + slice[(j + 1) * m.NX + i + 1]) / 4;
+      ctx.fillStyle = ramp((hv - r.hMin) / span);
+      ctx.fillRect(pad + i * cw, pad + (m.ny - 1 - j) * ch, cw + 0.6, ch + 0.6);
+    }
+    ctx.fillStyle = "#5f6d80"; ctx.font = "12px -apple-system,sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("3D head field — horizontal mid-depth slice", pad, pad - 14);
+    legend($("f3_canvas").parentElement, "Total head", `${r.hMin.toFixed(1)} m`, `${r.hMax.toFixed(1)} m`);
+  };
+
   // ---------------- Run buttons ----------------
-  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation, dynamics: runDynamics, thermal: runThermal };
+  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation, dynamics: runDynamics, thermal: runThermal, flow3d: runFlow3d };
   $("btn_compute").addEventListener("click", () => RUN[current]());
   $("btn_chat").addEventListener("click", () => document.body.classList.toggle("chat-hidden"));
   $("g_field").addEventListener("change", () => { if (last.sigma) draw.sigma(last.sigma); });
@@ -553,6 +585,7 @@
     if (mod === "consolidation") return "consolidation.terzaghi1d";
     if (mod === "dynamics") return "dynamic.site1d";
     if (mod === "thermal") return "thermal.transient";
+    if (mod === "flow3d") return "flow3d.steady";
     return null;
   }
   function setBadge(mod) {
@@ -631,7 +664,8 @@
     sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] },
     consolidation: { H: "c_H", cv: "c_cv", u0: "c_u0", drainage: ["c_drain", "str"], tEnd: "c_tEnd", nz: "c_nz" },
     dynamics: { vs: "d_vs", H: "d_H", zeta: "d_zeta" },
-    thermal: { L: "t_L", alpha: "t_alpha", Ti: "t_Ti", Ts: "t_Ts", tEnd: "t_tEnd", n: "t_n" }
+    thermal: { L: "t_L", alpha: "t_alpha", Ti: "t_Ti", Ts: "t_Ts", tEnd: "t_tEnd", n: "t_n" },
+    flow3d: { W: "f3_W", D: "f3_D", T: "f3_T", nx: "f3_nx", hu: "f3_hu", hd: "f3_hd", k: "f3_k" }
   };
   function readField(spec) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el) return undefined; return t === "bool" ? el.checked : t === "str" ? el.value : parseFloat(el.value); }
   function writeField(spec, val) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el || val == null) return; if (t === "bool") el.checked = !!val; else el.value = val; }
@@ -641,7 +675,7 @@
     $("tree_name").textContent = project.name || "Untitled project";
     renderMaterials(); populateMatSelectors(); syncSlopeRows();
   }
-  function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runSlope(); if (current !== "materials" && current !== "validation") switchTo(current); }
+  function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope(); if (current !== "materials" && current !== "validation") switchTo(current); }
   function note(msg) { $("status_right").textContent = msg; }
 
   function pickFile() { return new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = ".gcp,application/json"; i.onchange = () => res(i.files[0] || null); i.click(); }); }
@@ -811,6 +845,6 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
   // ---------------- First run ----------------
   window.addEventListener("resize", () => { if (last[current]) draw[current](last[current]); });
   setupProjectUI();
-  runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runSlope();   // slope last so the status bar reflects the default view
+  runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope();   // slope last so the status bar reflects the default view
   switchTo("slope");
 })();
