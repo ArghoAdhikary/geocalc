@@ -90,10 +90,42 @@
       notes: "Self-weight + surcharge. Not benchmark-verified."
     },
     {
-      id: "sigma.staged", module: "sigma", method: "Staged construction / consolidation",
+      id: "sigma.staged", module: "sigma", method: "Staged construction",
       dimension: "2D", maturity: "conceptual", phase: "C", priority: "P0",
-      references: ["Biot consolidation"],
-      notes: "Planned."
+      references: ["Staged activation/deactivation; state transfer"],
+      notes: "Planned (region/load staging and state transfer)."
+    },
+    {
+      id: "consolidation.terzaghi1d", module: "sigma", method: "1D consolidation (Terzaghi)",
+      dimension: "1D", maturity: "verified", phase: "C", priority: "P0",
+      references: ["Terzaghi 1D consolidation theory"],
+      evidence: ["benchmark:consolidation.terzaghi"],
+      envelope: "1D consolidation, uniform cv, uniform initial excess pressure, single or double drainage.",
+      notes: "Implicit diffusion of excess pore pressure; verified against the Terzaghi analytical degree-of-consolidation series."
+    },
+    {
+      id: "geostatic.init", module: "sigma", method: "Geostatic stress initialization",
+      dimension: "2D", maturity: "verified", phase: "C", priority: "P0",
+      references: ["Geostatic σv = Σγz; K0 lateral earth pressure"],
+      evidence: ["benchmark:geostatic.column"],
+      envelope: "Horizontally layered column, horizontal water table; σv, u, σv′, σh′ = K0·σv′.",
+      notes: "Documented gravity/geostatic initial state; verified against the analytical column."
+    },
+    {
+      id: "unsat.vangenuchten", module: "seep", method: "van Genuchten / Mualem functions",
+      dimension: "n/a", maturity: "verified", phase: "C", priority: "P0",
+      references: ["van Genuchten (1980); Mualem (1976)"],
+      evidence: ["benchmark:unsat.vangenuchten"],
+      envelope: "Retention θ(ψ) and relative conductivity kr(ψ) functions (constitutive), not yet a coupled unsaturated flow run.",
+      notes: "Unsaturated constitutive functions verified for endpoints, monotonicity and Mualem bounds. The unsaturated flow solver is a later increment."
+    },
+    {
+      id: "transfer.seep2slope", module: "slope", method: "Seepage→stability pore-pressure transfer",
+      dimension: "2D", maturity: "verified", phase: "C", priority: "P0",
+      references: ["Phreatic/water-table pore pressure u = γw·depth below the water table"],
+      evidence: ["benchmark:transfer.seep2slope"],
+      envelope: "Hydrostatic pore pressure from a water-table surface applied to the slip base. Full seepage-field transfer with interpolation/coverage is a later increment.",
+      notes: "Couples a phreatic surface into slope stability; verified against the hydrostatic pressure distribution."
     },
     {
       id: "dynamic.response", module: "dynamic", method: "Equivalent-linear / dynamic response",

@@ -45,6 +45,7 @@
       <li class="tnode child active" data-tab="slope"><span class="ti">▦</span> Slope stability</li>
       <li class="tnode child" data-tab="seep"><span class="ti">≈</span> Seepage</li>
       <li class="tnode child" data-tab="sigma"><span class="ti">◫</span> Stress–deformation</li>
+      <li class="tnode child" data-tab="consolidation"><span class="ti">⬓</span> Consolidation</li>
     </ul>
     <div class="tree-note">Phase B. <b>Verified</b> methods carry analytical benchmark evidence (see <i>Validation</i>) and apply only within their stated envelope; others are <b>demonstration</b> only. Independent review (AC-09) pending before release.</div>
   </nav>
@@ -88,9 +89,16 @@
         <label>Friction angle φ′ (°)<input id="s_phi" type="number" value="25" step="1"></label>
       </fieldset>
       <fieldset>
-        <legend>Water</legend>
-        <label>Pore pressure ratio r<sub>u</sub><input id="s_ru" type="number" value="0.25" step="0.05" min="0" max="0.7"></label>
-        <span class="note">r<sub>u</sub> = u / (γ·h). Use 0 for dry.</span>
+        <legend>Water / pore pressure</legend>
+        <label>Pore pressure model
+          <select id="s_pp">
+            <option value="ru">rᵤ coefficient</option>
+            <option value="watertable">Water table (phreatic transfer)</option>
+          </select>
+        </label>
+        <label id="s_ru_row">Pore pressure ratio r<sub>u</sub><input id="s_ru" type="number" value="0.25" step="0.05" min="0" max="0.7"></label>
+        <label id="s_wt_row" style="display:none">Water-table elevation (m)<input id="s_wt" type="number" value="4" step="0.5"></label>
+        <span class="note">Water table applies u = γ<sub>w</sub>·(wt − base), the phreatic result of a seepage analysis.</span>
       </fieldset>
       <fieldset>
         <legend>Method &amp; search</legend>
@@ -172,6 +180,24 @@
       </fieldset>
       <div id="g_result" class="result"></div>
     </div>
+
+    <!-- CONSOLIDATION -->
+    <div id="props-consolidation" class="propset">
+      <div class="props-title">Consolidation <small>1D Terzaghi</small> <span id="badge-consolidation" class="badge"></span></div>
+      <fieldset>
+        <legend>Layer</legend>
+        <label>Thickness H (m)<input id="c_H" type="number" value="4" step="0.5"></label>
+        <label>Coeff. of consolidation c<sub>v</sub> (m²/yr)<input id="c_cv" type="number" value="1" step="0.5"></label>
+        <label>Initial excess pore pressure u₀ (kPa)<input id="c_u0" type="number" value="100" step="10"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Drainage &amp; time</legend>
+        <label>Drainage<select id="c_drain"><option value="double">Double (both faces)</option><option value="single">Single (top only)</option></select></label>
+        <label>End time (yr)<input id="c_tEnd" type="number" value="2" step="0.5"></label>
+        <label>Depth cells<input id="c_nz" type="number" value="100" step="10" min="20" max="400"></label>
+      </fieldset>
+      <div id="c_result" class="result"></div>
+    </div>
   </aside>
 
   <!-- Viewport -->
@@ -182,6 +208,7 @@
       <div id="vp-slope" class="vp active"><canvas id="s_canvas"></canvas></div>
       <div id="vp-seep" class="vp"><canvas id="p_canvas"></canvas></div>
       <div id="vp-sigma" class="vp"><canvas id="g_canvas"></canvas></div>
+      <div id="vp-consolidation" class="vp"><canvas id="c_canvas"></canvas></div>
     </div>
     <div class="statusbar">
       <span id="status_main">Ready</span>
@@ -242,7 +269,7 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "3.0.0";</script>
+<script>window.GC_VERSION = "4.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>
@@ -251,6 +278,9 @@
 <script src="js/seep.js"></script>
 <script src="js/feflow.js"></script>
 <script src="js/sigma.js"></script>
+<script src="js/consolidation.js"></script>
+<script src="js/unsat.js"></script>
+<script src="js/geostatic.js"></script>
 <script src="js/core/benchmarks.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/app.js"></script>

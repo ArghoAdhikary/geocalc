@@ -14,6 +14,7 @@ function loadContext() {
   sandbox.window = sandbox;
   const files = [
     "js/linalg.js", "js/slope.js", "js/seep.js", "js/feflow.js",
+    "js/consolidation.js", "js/unsat.js", "js/geostatic.js",
     "js/core/benchmarks.js"
   ];
   for (const f of files) {
@@ -36,7 +37,8 @@ for (const r of results) {
 
 test("verified methods match expectation", () => {
   const verified = new Set(G.Benchmarks.verifiedMethods());
-  for (const m of ["slope.fellenius", "slope.bishop", "seep.steady", "seep.transient", "feflow.steady"]) {
+  for (const m of ["slope.fellenius", "slope.bishop", "seep.steady", "seep.transient", "feflow.steady",
+                   "consolidation.terzaghi1d", "unsat.vangenuchten", "geostatic.init", "transfer.seep2slope"]) {
     assert.ok(verified.has(m), `${m} should be benchmark-verified`);
   }
 });

@@ -171,11 +171,86 @@
         const r = S.FEFlow.solveSteady({ W: 40, D: 20, nx: 24, hu: 16, hd: 4, k: 1 });
         return { computed: r.qOut, reference: r.qIn, error: r.balanceError };
       }
+    },
+    {
+      id: "consolidation.terzaghi",
+      method: "consolidation.terzaghi1d",
+      title: "1D consolidation vs Terzaghi series (U at Tv = 0.2)",
+      source: "Terzaghi 1D consolidation analytical degree of consolidation",
+      tol: 0.02, metric: "relative error in U",
+      run(S) {
+        const Co = S.Consolidation, cv = 1, H = 2, u0 = 100, Tv = 0.2;
+        const tEnd = Tv * (H / 2) * (H / 2) / cv;
+        const r = Co.solve1D({ cv, H, u0, nz: 100, tEnd, dt: tEnd / 400, drainage: "double" });
+        const ref = Co.terzaghiU(Tv);
+        return { computed: r.U, reference: ref, error: Math.abs(r.U - ref) / Math.abs(ref) };
+      }
+    },
+    {
+      id: "unsat.vangenuchten",
+      method: "unsat.vangenuchten",
+      title: "van Genuchten retention: endpoints, monotonicity, Mualem kr",
+      source: "van Genuchten (1980) retention + Mualem (1976) conductivity",
+      tol: 1e-9, metric: "max property violation",
+      run(S) {
+        const U = S.Unsat, vg = U.defaultVG();
+        let v = 0;
+        // Exact endpoints.
+        v = Math.max(v, Math.abs(U.waterContent(0, vg) - vg.theta_s));   // saturated
+        v = Math.max(v, Math.abs(U.relConductivity(0, vg) - 1));          // kr(0) = 1
+        // Independent recomputation of Se at a specific suction (verifies formula).
+        const psi0 = 1.5, m = 1 - 1 / vg.n;
+        const seRef = Math.pow(1 + Math.pow(vg.alpha * psi0, vg.n), -m);
+        v = Math.max(v, Math.abs(U.effSaturation(psi0, vg) - seRef));
+        // Monotonic decreasing theta, and kr bounded in [0,1].
+        let prev = Infinity;
+        for (let psi = 0; psi <= 10; psi += 0.5) { const th = U.waterContent(psi, vg); if (th > prev + 1e-12) v = Math.max(v, th - prev); prev = th; }
+        const kr = U.relConductivity(1, vg); if (kr < 0 || kr > 1) v = Math.max(v, Math.max(kr - 1, -kr, 0));
+        // Asymptotic sanity: very dry approaches theta_r (within 1% of the range).
+        const dry = U.waterContent(1e6, vg), band = vg.theta_r + (vg.theta_s - vg.theta_r) * 0.01;
+        if (dry > band) v = Math.max(v, dry - band);
+        return { computed: v, reference: 0, error: v };
+      }
+    },
+    {
+      id: "geostatic.column",
+      method: "geostatic.init",
+      title: "Geostatic vertical stress vs γ·z (homogeneous column)",
+      source: "Analytical geostatic σv = γz; u = γw·(z − z_wt)",
+      tol: 1e-9, metric: "max relative stress/pressure error",
+      run(S) {
+        const G = S.Geostatic, gamma = 18, zwt = 2;
+        const res = G.profile([{ gamma, thickness: 20, K0: 0.5 }], zwt, [1, 5, 10, 15]);
+        let e = 0;
+        for (const row of res) {
+          const svRef = gamma * row.z, uRef = row.z > zwt ? G.GAMMA_W * (row.z - zwt) : 0;
+          e = Math.max(e, Math.abs(row.sigma_v - svRef) / svRef, Math.abs(row.u - uRef) / Math.max(uRef, 1e-9));
+        }
+        return { computed: e, reference: 0, error: e };
+      }
+    },
+    {
+      id: "transfer.seep2slope",
+      method: "transfer.seep2slope",
+      title: "Phreatic pore-pressure transfer u = γw·(wt − base)",
+      source: "Hydrostatic pore pressure below a water table (FR-SEP-008)",
+      tol: 1e-9, metric: "max pore-pressure error on slices",
+      run(S) {
+        const Sl = S.Slope, gw = 9.81, wt = 6;
+        const p = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, nslices: 40, porePressureMode: "watertable", wt, gammaW: gw };
+        const r = Sl.foSForCircle(p, 24, 17, 17);
+        let e = 0;
+        for (const s of r.slices) { const ref = Math.max(0, gw * (wt - s.baseY)); e = Math.max(e, Math.abs(s.u - ref)); }
+        return { computed: e, reference: 0, error: e };
+      }
     }
   ];
 
   function solvers() {
-    return { Slope: global.Slope, Seep: global.Seep, FEFlow: global.FEFlow };
+    return {
+      Slope: global.Slope, Seep: global.Seep, FEFlow: global.FEFlow,
+      Consolidation: global.Consolidation, Unsat: global.Unsat, Geostatic: global.Geostatic
+    };
   }
 
   // Run all benchmarks (optionally filtered to one method). Returns results.

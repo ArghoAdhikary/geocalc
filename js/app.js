@@ -6,7 +6,7 @@
 
   // ---------------- Analysis switching (ribbon tabs + project tree) ----------------
   let current = "slope";
-  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", materials: "Materials library", validation: "Validation" };
+  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", materials: "Materials library", validation: "Validation" };
   const statusStore = {};
   function setStatus(mod, main, right) {
     statusStore[mod] = { main, right: right || "" };
@@ -58,7 +58,8 @@
     return {
       H: num("s_H"), beta: num("s_beta"), crest: num("s_crest"), toe: num("s_toe"),
       gamma: num("s_gamma"), c: num("s_c"), phi: num("s_phi"), ru: num("s_ru"),
-      method: $("s_method").value, nslices: num("s_nslices"), grid: num("s_grid")
+      method: $("s_method").value, nslices: num("s_nslices"), grid: num("s_grid"),
+      porePressureMode: $("s_pp").value, wt: num("s_wt"), gammaW: 9.81
     };
   }
   function runSlope() {
@@ -294,8 +295,57 @@
       <div class="row"><span>${loLabel}</span><span>${hiLabel}</span></div>`;
   }
 
+  // ---------------- CONSOLIDATION (Phase C) ----------------
+  function readConsol() {
+    return { H: num("c_H"), cv: num("c_cv"), u0: num("c_u0"), drainage: $("c_drain").value, tEnd: num("c_tEnd"), nz: num("c_nz") };
+  }
+  function runConsolidation() {
+    const p = readConsol();
+    const Co = window.Consolidation;
+    const Hdr = p.drainage === "single" ? p.H : p.H / 2;
+    const N = 24, series = [];
+    for (let i = 1; i <= N; i++) {
+      const t = p.tEnd * i / N;
+      const r = Co.solve1D({ H: p.H, cv: p.cv, u0: p.u0, nz: p.nz, drainage: p.drainage, tEnd: t, dt: t / 120 });
+      series.push({ t, Tv: r.Tv, U: r.U });
+    }
+    const final = series[series.length - 1];
+    last.consolidation = { p, series, final };
+    $("c_result").innerHTML =
+      `<div class="big">${(final.U * 100).toFixed(1)}% <span class="muted" style="font-size:14px">consolidation</span></div>
+       <div class="muted">at t = ${p.tEnd} yr · T<sub>v</sub> = ${final.Tv.toFixed(3)}</div>
+       <table>
+        <tr><td>Drainage path H<sub>dr</sub></td><td>${Hdr.toFixed(2)} m</td></tr>
+        <tr><td>Terzaghi U(T<sub>v</sub>)</td><td>${(Co.terzaghiU(final.Tv) * 100).toFixed(1)}%</td></tr>
+       </table>`;
+    setStatus("consolidation", `Consolidation — U = ${(final.U * 100).toFixed(1)}% at t = ${p.tEnd} yr`, `Tv = ${final.Tv.toFixed(3)}`);
+    disclaim("consolidation", "c_result");
+    draw.consolidation(last.consolidation);
+  }
+  draw.consolidation = ({ series }) => {
+    const { ctx, w, h } = fitCanvas($("c_canvas"));
+    ctx.clearRect(0, 0, w, h);
+    const pad = 54, TvMax = Math.max(0.05, ...series.map(s => s.Tv));
+    const sx = tv => pad + (tv / TvMax) * (w - 2 * pad);
+    const sy = U => (h - pad) - U * (h - 2 * pad);
+    ctx.strokeStyle = "#c9d3de"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, pad - 6); ctx.lineTo(pad, h - pad); ctx.lineTo(w - pad, h - pad); ctx.stroke();
+    // Terzaghi analytical curve
+    ctx.strokeStyle = "#1f6fd0"; ctx.lineWidth = 2.5; ctx.beginPath();
+    for (let i = 0; i <= 120; i++) { const tv = TvMax * i / 120, U = window.Consolidation.terzaghiU(tv); i ? ctx.lineTo(sx(tv), sy(U)) : ctx.moveTo(sx(tv), sy(U)); }
+    ctx.stroke();
+    // numeric points
+    ctx.fillStyle = "#e5604d";
+    for (const s of series) { ctx.beginPath(); ctx.arc(sx(s.Tv), sy(s.U), 3.5, 0, 7); ctx.fill(); }
+    ctx.fillStyle = "#5f6d80"; ctx.font = "12px -apple-system,sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("Degree of consolidation — line: Terzaghi analytical · dots: numeric solver", pad, pad - 18);
+    ctx.fillText("Tᵥ (time factor)", w - pad - 90, h - pad + 24);
+    ctx.textAlign = "right";
+    for (const U of [0, 0.25, 0.5, 0.75, 1]) { ctx.fillText((U * 100) + "%", pad - 8, sy(U) + 4); }
+  };
+
   // ---------------- Run buttons ----------------
-  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma };
+  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation };
   $("btn_compute").addEventListener("click", () => RUN[current]());
   $("btn_chat").addEventListener("click", () => document.body.classList.toggle("chat-hidden"));
   $("g_field").addEventListener("change", () => { if (last.sigma) draw.sigma(last.sigma); });
@@ -439,6 +489,7 @@
     if (mod === "slope") return $("s_method").value === "fellenius" ? "slope.fellenius" : "slope.bishop";
     if (mod === "seep") return ($("p_transient") && $("p_transient").checked) ? "seep.transient" : "seep.steady";
     if (mod === "sigma") return "sigma.elastic";
+    if (mod === "consolidation") return "consolidation.terzaghi1d";
     return null;
   }
   function setBadge(mod) {
@@ -459,6 +510,12 @@
     const compute = $("btn_compute");
     if (mod === "materials" || mod === "validation") { compute.disabled = true; compute.style.opacity = .4; }
     else { compute.disabled = false; compute.style.opacity = 1; setBadge(mod); }
+  }
+  function syncSlopeRows() {
+    if (!$("s_pp")) return;
+    const wt = $("s_pp").value === "watertable";
+    $("s_ru_row").style.display = wt ? "none" : "flex";
+    $("s_wt_row").style.display = wt ? "flex" : "none";
   }
 
   // ---- Materials library ----
@@ -506,9 +563,10 @@
 
   // ---- Project <-> DOM sync and file operations ----
   const DOM_MAP = {
-    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", ru: "s_ru", method: ["s_method", "str"], nslices: "s_nslices", grid: "s_grid" },
+    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", ru: "s_ru", method: ["s_method", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt" },
     seep:  { materialId: ["p_mat", "str"], W: "p_W", D: "p_D", nx: "p_nx", hu: "p_hu", hd: "p_hd", k: "p_k", wall_on: ["p_wall_on", "bool"], wall_x: "p_wall_x", wall_d: "p_wall_d" },
-    sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] }
+    sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] },
+    consolidation: { H: "c_H", cv: "c_cv", u0: "c_u0", drainage: ["c_drain", "str"], tEnd: "c_tEnd", nz: "c_nz" }
   };
   function readField(spec) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el) return undefined; return t === "bool" ? el.checked : t === "str" ? el.value : parseFloat(el.value); }
   function writeField(spec, val) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el || val == null) return; if (t === "bool") el.checked = !!val; else el.value = val; }
@@ -516,9 +574,9 @@
   function applyProjectToDom() {
     for (const mod in DOM_MAP) { populateMatSelectors(); for (const k in DOM_MAP[mod]) writeField(DOM_MAP[mod][k], project.analyses[mod][k]); }
     $("tree_name").textContent = project.name || "Untitled project";
-    renderMaterials(); populateMatSelectors();
+    renderMaterials(); populateMatSelectors(); syncSlopeRows();
   }
-  function recomputeAll() { runSeep(); runSigma(); runSlope(); if (current !== "materials") switchTo(current); }
+  function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runSlope(); if (current !== "materials" && current !== "validation") switchTo(current); }
   function note(msg) { $("status_right").textContent = msg; }
 
   function pickFile() { return new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = ".gcp,application/json"; i.onchange = () => res(i.files[0] || null); i.click(); }); }
@@ -672,6 +730,8 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
     $("p_mat").addEventListener("change", () => applyMaterialToAnalysis("seep", $("p_mat").value));
     $("g_mat").addEventListener("change", () => applyMaterialToAnalysis("sigma", $("g_mat").value));
     $("s_method").addEventListener("change", () => setBadge("slope"));
+    $("s_pp").addEventListener("change", syncSlopeRows);
+    syncSlopeRows();
     $("btn_new").addEventListener("click", doNew);
     $("btn_open").addEventListener("click", doOpen);
     $("btn_save").addEventListener("click", () => doSave(false));
@@ -686,6 +746,6 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
   // ---------------- First run ----------------
   window.addEventListener("resize", () => { if (last[current]) draw[current](last[current]); });
   setupProjectUI();
-  runSeep(); runSigma(); runSlope();   // slope last so the status bar reflects the default view
+  runSeep(); runSigma(); runConsolidation(); runSlope();   // slope last so the status bar reflects the default view
   switchTo("slope");
 })();

@@ -79,7 +79,16 @@
       // is positive for the real failure direction.
       const alpha = Math.asin(-dx / R);        // base inclination (rad)
       const W = gamma * h * b;                 // slice weight (kN/m)
-      const u = ru * gamma * h;                // pore pressure at base
+      // Pore pressure at the slice base: either the rᵤ coefficient, or a
+      // phreatic/water-table transfer (u = γ_w·depth below the water table),
+      // the common result of a seepage analysis (FR-SEP-008).
+      let u;
+      if (p.porePressureMode === "watertable") {
+        const gw = p.gammaW || 9.81;
+        u = Math.max(0, gw * ((p.wt != null ? p.wt : 0) - baseY));
+      } else {
+        u = ru * gamma * h;
+      }
       const dl = b / Math.cos(alpha);          // base length
       den += W * Math.sin(alpha);
       slices.push({ xm, baseY, topY, alpha, W, u, dl, b });
