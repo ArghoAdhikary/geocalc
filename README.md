@@ -43,8 +43,22 @@ node bin/geocalc-run.js myproject.gcp --mc 2000 42
 
 Prebuilt apps for macOS and Windows are on the
 [Releases](../../releases) page (`.dmg`/`.zip` for macOS, installer/portable
-`.exe` for Windows). The apps are not code-signed, so the first launch may need
-right-click → Open (macOS) or "Run anyway" (Windows).
+`.exe` for Windows).
+
+The apps are **not code-signed** (that needs a paid Apple/Microsoft developer
+certificate), so Gatekeeper/SmartScreen will warn on first launch:
+
+- **macOS (Apple Silicon):** after dragging **GeoCalc Pro.app** to `/Applications`,
+  the app may report that it "is damaged and can't be opened." That's the
+  unsigned-app check, not a corrupt download. Clear it once in Terminal:
+
+  ```bash
+  xattr -cr "/Applications/GeoCalc Pro.app"
+  ```
+
+  Then open it normally. (Right-click → Open also works for the milder
+  "unidentified developer" warning.)
+- **Windows:** on the SmartScreen prompt choose **More info → Run anyway**.
 
 ## Build & test from source
 
