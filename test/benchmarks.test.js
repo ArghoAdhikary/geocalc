@@ -15,7 +15,7 @@ function loadContext() {
   const files = [
     "js/linalg.js", "js/slope.js", "js/seep.js", "js/feflow.js",
     "js/consolidation.js", "js/unsat.js", "js/geostatic.js",
-    "js/dynamics.js", "js/thermal.js", "js/mesh3d.js",
+    "js/dynamics.js", "js/thermal.js", "js/mesh3d.js", "js/probabilistic.js",
     "js/core/benchmarks.js"
   ];
   for (const f of files) {
@@ -41,7 +41,7 @@ test("verified methods match expectation", () => {
   for (const m of ["slope.fellenius", "slope.bishop", "seep.steady", "seep.transient", "feflow.steady",
                    "consolidation.terzaghi1d", "unsat.vangenuchten", "geostatic.init", "transfer.seep2slope",
                    "dynamic.sdof", "dynamic.site1d", "thermal.steady", "thermal.transient",
-                   "flow3d.steady"]) {
+                   "flow3d.steady", "probabilistic.montecarlo"]) {
     assert.ok(verified.has(m), `${m} should be benchmark-verified`);
   }
 });

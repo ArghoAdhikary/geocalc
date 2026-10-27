@@ -178,6 +178,20 @@
       dimension: "3D", maturity: "conceptual", phase: "E", priority: "P0",
       references: [],
       notes: "Planned; each 3D physics requires its own benchmark program before any Verified label."
+    },
+    {
+      id: "probabilistic.montecarlo", module: "slope", method: "Monte Carlo slope reliability",
+      dimension: "2D", maturity: "verified", phase: "F", priority: "P2",
+      references: ["Monte Carlo reliability; normal strength parameters; reliability index β"],
+      evidence: ["benchmark:probabilistic.degenerate", "benchmark:probabilistic.sampler", "benchmark:probabilistic.reproducible"],
+      envelope: "Normally-distributed c′, φ′ on the deterministic critical surface; seeded and reproducible. Correlation, spatial variability and surface re-search are later increments.",
+      notes: "Probability of failure and reliability index for the selected limit state (FR-SLP-009); the headless CLI runs the same analysis reproducibly."
+    },
+    {
+      id: "collaboration", module: "platform", method: "Remote workers / cloud / access control",
+      dimension: "n/a", maturity: "conceptual", phase: "F", priority: "P2",
+      references: [],
+      notes: "Requires real infrastructure and a security/permission/audit review (§20.6); not implemented in this local build. Scripting/batch is provided by the headless CLI."
     }
   ];
 

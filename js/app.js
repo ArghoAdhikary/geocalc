@@ -6,7 +6,7 @@
 
   // ---------------- Analysis switching (ribbon tabs + project tree) ----------------
   let current = "slope";
-  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", flow3d: "3D flow", materials: "Materials library", validation: "Validation" };
+  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", flow3d: "3D flow", prob: "Probabilistic", materials: "Materials library", validation: "Validation" };
   const statusStore = {};
   function setStatus(mod, main, right) {
     statusStore[mod] = { main, right: right || "" };
@@ -437,8 +437,47 @@
     legend($("f3_canvas").parentElement, "Total head", `${r.hMin.toFixed(1)} m`, `${r.hMax.toFixed(1)} m`);
   };
 
+  // ---------------- PROBABILISTIC (Phase F) ----------------
+  function readProb() { return { cStd: num("pr_cStd"), phiStd: num("pr_phiStd"), N: num("pr_N"), seed: num("pr_seed") }; }
+  function runProb() {
+    const sp = readSlope(), pr = readProb(), P = window.Probabilistic;
+    const r = P.monteCarloSlope(sp, { cMean: sp.c, cStd: pr.cStd, phiMean: sp.phi, phiStd: pr.phiStd }, pr.N | 0, pr.seed | 0);
+    if (!r) { $("pr_result").innerHTML = '<span class="muted">No valid critical surface for the mean parameters.</span>'; setStatus("prob", "Probabilistic — no surface"); return; }
+    last.prob = { sp, pr, r };
+    const cls = r.pf < 0.01 ? "fos-good" : r.pf < 0.05 ? "fos-warn" : "fos-bad";
+    $("pr_result").innerHTML =
+      `<div class="big ${cls}">${(r.pf * 100).toFixed(1)}% <span class="muted" style="font-size:14px">P(failure)</span></div>
+       <div class="muted">P(FoS &lt; 1) · ${r.n} samples · seed ${pr.seed}</div>
+       <table>
+        <tr><td>Mean FoS</td><td>${r.mean.toFixed(3)}</td></tr>
+        <tr><td>Std. dev.</td><td>${r.std.toFixed(3)}</td></tr>
+        <tr><td>Reliability index β</td><td>${isFinite(r.beta) ? r.beta.toFixed(2) : "—"}</td></tr>
+       </table>`;
+    setStatus("prob", `Probabilistic — P(failure) = ${(r.pf * 100).toFixed(1)}%`, `β = ${isFinite(r.beta) ? r.beta.toFixed(2) : "—"}`);
+    disclaim("prob", "pr_result");
+    draw.prob(last.prob);
+  }
+  draw.prob = ({ r }) => {
+    const { ctx, w, h } = fitCanvas($("pr_canvas")); ctx.clearRect(0, 0, w, h);
+    const pad = 54, nb = 30, lo = Math.min(r.min, 0.6), hi = Math.max(r.max, 1.4), bw = (hi - lo) / nb;
+    const bins = new Array(nb).fill(0);
+    for (const f of r.fos) { let b = Math.floor((f - lo) / bw); b = Math.max(0, Math.min(nb - 1, b)); bins[b]++; }
+    const maxB = Math.max.apply(null, bins) || 1;
+    const sx = v => pad + ((v - lo) / (hi - lo)) * (w - 2 * pad), sy = c => (h - pad) - (c / maxB) * (h - 2 * pad);
+    ctx.strokeStyle = "#c9d3de"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, pad - 6); ctx.lineTo(pad, h - pad); ctx.lineTo(w - pad, h - pad); ctx.stroke();
+    for (let i = 0; i < nb; i++) {
+      const x0 = sx(lo + i * bw), x1 = sx(lo + (i + 1) * bw), fmid = lo + (i + 0.5) * bw;
+      ctx.fillStyle = fmid < 1 ? "rgba(229,96,77,.78)" : "rgba(31,111,208,.65)";
+      ctx.fillRect(x0, sy(bins[i]), Math.max(1, x1 - x0 - 1), (h - pad) - sy(bins[i]));
+    }
+    ctx.strokeStyle = "#e5604d"; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(sx(1), pad - 6); ctx.lineTo(sx(1), h - pad); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#5f6d80"; ctx.font = "12px -apple-system,sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("Factor-of-safety distribution — red: FoS < 1 (failure) · dashed: FoS = 1", pad, pad - 18);
+    ctx.fillText("Factor of safety", w - pad - 90, h - pad + 24);
+  };
+
   // ---------------- Run buttons ----------------
-  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation, dynamics: runDynamics, thermal: runThermal, flow3d: runFlow3d };
+  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation, dynamics: runDynamics, thermal: runThermal, flow3d: runFlow3d, prob: runProb };
   $("btn_compute").addEventListener("click", () => RUN[current]());
   $("btn_chat").addEventListener("click", () => document.body.classList.toggle("chat-hidden"));
   $("g_field").addEventListener("change", () => { if (last.sigma) draw.sigma(last.sigma); });
@@ -586,6 +625,7 @@
     if (mod === "dynamics") return "dynamic.site1d";
     if (mod === "thermal") return "thermal.transient";
     if (mod === "flow3d") return "flow3d.steady";
+    if (mod === "prob") return "probabilistic.montecarlo";
     return null;
   }
   function setBadge(mod) {
@@ -659,13 +699,14 @@
 
   // ---- Project <-> DOM sync and file operations ----
   const DOM_MAP = {
-    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", ru: "s_ru", method: ["s_method", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt" },
+    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", gamma: "s_gamma", c: "s_c", phi: "s_phi", ru: "s_ru", method: ["s_method", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt" },
     seep:  { materialId: ["p_mat", "str"], W: "p_W", D: "p_D", nx: "p_nx", hu: "p_hu", hd: "p_hd", k: "p_k", wall_on: ["p_wall_on", "bool"], wall_x: "p_wall_x", wall_d: "p_wall_d" },
     sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] },
     consolidation: { H: "c_H", cv: "c_cv", u0: "c_u0", drainage: ["c_drain", "str"], tEnd: "c_tEnd", nz: "c_nz" },
     dynamics: { vs: "d_vs", H: "d_H", zeta: "d_zeta" },
     thermal: { L: "t_L", alpha: "t_alpha", Ti: "t_Ti", Ts: "t_Ts", tEnd: "t_tEnd", n: "t_n" },
-    flow3d: { W: "f3_W", D: "f3_D", T: "f3_T", nx: "f3_nx", hu: "f3_hu", hd: "f3_hd", k: "f3_k" }
+    flow3d: { W: "f3_W", D: "f3_D", T: "f3_T", nx: "f3_nx", hu: "f3_hu", hd: "f3_hd", k: "f3_k" },
+    prob: { cStd: "pr_cStd", phiStd: "pr_phiStd", N: "pr_N", seed: "pr_seed" }
   };
   function readField(spec) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el) return undefined; return t === "bool" ? el.checked : t === "str" ? el.value : parseFloat(el.value); }
   function writeField(spec, val) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el || val == null) return; if (t === "bool") el.checked = !!val; else el.value = val; }
@@ -675,7 +716,7 @@
     $("tree_name").textContent = project.name || "Untitled project";
     renderMaterials(); populateMatSelectors(); syncSlopeRows();
   }
-  function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope(); if (current !== "materials" && current !== "validation") switchTo(current); }
+  function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope(); runProb(); if (current !== "materials" && current !== "validation") switchTo(current); }
   function note(msg) { $("status_right").textContent = msg; }
 
   function pickFile() { return new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = ".gcp,application/json"; i.onchange = () => res(i.files[0] || null); i.click(); }); }
@@ -845,6 +886,6 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
   // ---------------- First run ----------------
   window.addEventListener("resize", () => { if (last[current]) draw[current](last[current]); });
   setupProjectUI();
-  runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope();   // slope last so the status bar reflects the default view
+  runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope(); runProb();   // slope's status restored on switchTo below
   switchTo("slope");
 })();

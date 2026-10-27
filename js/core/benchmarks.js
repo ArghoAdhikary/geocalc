@@ -368,6 +368,47 @@
         const r = S.Mesh3D.solveFlow3D({ W: 40, D: 20, T: 20, nx: 20, hu: 16, hd: 4, k: 1 });
         return { computed: r.qout, reference: r.qin, error: r.balanceError };
       }
+    },
+    {
+      id: "probabilistic.degenerate",
+      method: "probabilistic.montecarlo",
+      title: "Zero-variance Monte Carlo equals the deterministic FoS",
+      source: "Degenerate distribution: all samples equal the mean parameters",
+      tol: 1e-9, metric: "relative mean FoS error",
+      run(S) {
+        const bp = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, method: "bishop", nslices: 30, grid: 12 };
+        const r = S.Probabilistic.monteCarloSlope(bp, { cMean: bp.c, cStd: 0, phiMean: bp.phi, phiStd: 0 }, 50, 1);
+        const d = S.Slope.foSForCircle(Object.assign({}, bp), r.circle.xc, r.circle.yc, r.circle.R, bp.nslices).bishop;
+        return { computed: r.mean, reference: d, error: Math.abs(r.mean - d) / Math.abs(d) };
+      }
+    },
+    {
+      id: "probabilistic.sampler",
+      method: "probabilistic.montecarlo",
+      title: "Normal sampler matches target mean and std",
+      source: "Box–Muller sampler statistics over a large seeded sample",
+      tol: 0.05, metric: "max relative mean/std error",
+      run(S) {
+        const P = S.Probabilistic, rng = P.mulberry32(12345), N = 50000, mu = 5, sg = 1, a = [];
+        for (let i = 0; i < N; i++) a.push(P.normalSample(rng, mu, sg));
+        const st = P.stats(a);
+        const e = Math.max(Math.abs(st.mean - mu) / mu, Math.abs(st.std - sg) / sg);
+        return { computed: e, reference: 0, error: e };
+      }
+    },
+    {
+      id: "probabilistic.reproducible",
+      method: "probabilistic.montecarlo",
+      title: "Seeded runs are reproducible",
+      source: "Deterministic seeded generator (FR-VAL-009)",
+      tol: 0, metric: "difference between two seeded runs",
+      run(S) {
+        const bp = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, method: "bishop", nslices: 30, grid: 12 };
+        const d = { cMean: 10, cStd: 3, phiMean: 25, phiStd: 3 };
+        const a = S.Probabilistic.monteCarloSlope(bp, d, 100, 777);
+        const b = S.Probabilistic.monteCarloSlope(bp, d, 100, 777);
+        return { computed: b.mean, reference: a.mean, error: Math.abs(a.mean - b.mean) + Math.abs(a.pf - b.pf) };
+      }
     }
   ];
 
@@ -375,7 +416,8 @@
     return {
       Slope: global.Slope, Seep: global.Seep, FEFlow: global.FEFlow,
       Consolidation: global.Consolidation, Unsat: global.Unsat, Geostatic: global.Geostatic,
-      Dynamics: global.Dynamics, Thermal: global.Thermal, Mesh3D: global.Mesh3D
+      Dynamics: global.Dynamics, Thermal: global.Thermal, Mesh3D: global.Mesh3D,
+      Probabilistic: global.Probabilistic
     };
   }
 

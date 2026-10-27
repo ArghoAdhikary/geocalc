@@ -49,8 +49,9 @@
       <li class="tnode child" data-tab="dynamics"><span class="ti">∿</span> Dynamics / site response</li>
       <li class="tnode child" data-tab="thermal"><span class="ti">∆</span> Thermal</li>
       <li class="tnode child" data-tab="flow3d"><span class="ti">⬔</span> 3D flow</li>
+      <li class="tnode child" data-tab="prob"><span class="ti">∎</span> Probabilistic</li>
     </ul>
-    <div class="tree-note">Phase B. <b>Verified</b> methods carry analytical benchmark evidence (see <i>Validation</i>) and apply only within their stated envelope; others are <b>demonstration</b> only. Independent review (AC-09) pending before release.</div>
+    <div class="tree-note">Phases A–F. <b>Verified</b> methods carry analytical benchmark evidence (see <i>Validation</i>) and apply only within their stated envelope; others are <b>demonstration</b> only. Independent review (AC-09) pending before release.</div>
   </nav>
 
   <!-- Properties (inputs) -->
@@ -250,6 +251,23 @@
       </fieldset>
       <div id="f3_result" class="result"></div>
     </div>
+
+    <!-- PROBABILISTIC -->
+    <div id="props-prob" class="propset">
+      <div class="props-title">Probabilistic <small>Monte Carlo slope reliability</small> <span id="badge-prob" class="badge"></span></div>
+      <p class="note">Uses the Slope analysis geometry and mean strengths; c′ and φ′ are sampled from normal distributions on the deterministic critical surface.</p>
+      <fieldset>
+        <legend>Uncertainty</legend>
+        <label>Std. dev. of c′ (kPa)<input id="pr_cStd" type="number" value="3" step="0.5" min="0"></label>
+        <label>Std. dev. of φ′ (°)<input id="pr_phiStd" type="number" value="3" step="0.5" min="0"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Sampling</legend>
+        <label>Samples N<input id="pr_N" type="number" value="2000" step="500" min="100" max="20000"></label>
+        <label>Random seed<input id="pr_seed" type="number" value="1" step="1"></label>
+      </fieldset>
+      <div id="pr_result" class="result"></div>
+    </div>
   </aside>
 
   <!-- Viewport -->
@@ -264,6 +282,7 @@
       <div id="vp-dynamics" class="vp"><canvas id="d_canvas"></canvas></div>
       <div id="vp-thermal" class="vp"><canvas id="t_canvas"></canvas></div>
       <div id="vp-flow3d" class="vp"><canvas id="f3_canvas"></canvas></div>
+      <div id="vp-prob" class="vp"><canvas id="pr_canvas"></canvas></div>
     </div>
     <div class="statusbar">
       <span id="status_main">Ready</span>
@@ -324,7 +343,7 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "6.0.0";</script>
+<script>window.GC_VERSION = "7.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>
@@ -339,6 +358,7 @@
 <script src="js/dynamics.js"></script>
 <script src="js/thermal.js"></script>
 <script src="js/mesh3d.js"></script>
+<script src="js/probabilistic.js"></script>
 <script src="js/core/benchmarks.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/app.js"></script>

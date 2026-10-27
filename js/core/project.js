@@ -39,6 +39,7 @@
   function defaultAnalyses() {
     return {
       slope: { materialId: "mat_fill", H: 10, beta: 34, crest: 12, toe: 14,
+               gamma: 18, c: 10, phi: 25,
                ru: 0.25, method: "bishop", nslices: 30, grid: 14,
                porePressureMode: "ru", wt: 4 },
       seep:  { W: 40, D: 20, nx: 80, hu: 16, hd: 4, k: 1.0,
@@ -48,7 +49,8 @@
       consolidation: { H: 4, cv: 1, u0: 100, drainage: "double", tEnd: 2, nz: 100 },
       dynamics: { vs: 200, H: 20, zeta: 0.05 },
       thermal: { L: 1, alpha: 1, Ti: 100, Ts: 0, tEnd: 0.02, n: 100 },
-      flow3d: { W: 40, D: 20, T: 20, nx: 24, hu: 16, hd: 4, k: 1.0 }
+      flow3d: { W: 40, D: 20, T: 20, nx: 24, hu: 16, hd: 4, k: 1.0 },
+      prob: { cStd: 3, phiStd: 3, N: 2000, seed: 1 }
     };
   }
 
@@ -57,7 +59,7 @@
     return {
       schemaVersion: SCHEMA_VERSION,
       app: APP,
-      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "6.0.0",
+      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "7.0.0",
       name: name || "Untitled project",
       created: now,
       modified: now,

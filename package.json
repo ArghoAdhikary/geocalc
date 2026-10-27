@@ -1,11 +1,12 @@
 {
   "name": "geocalc",
   "productName": "GeoCalc Pro",
-  "version": "6.0.0",
+  "version": "7.0.0",
   "description": "GeoCalc Pro — geotechnical analysis (slope stability, seepage, stress/FEM) with a capability registry, project files, and an AI chat assistant.",
   "author": "GeoCalc",
   "license": "MIT",
   "main": "electron/main.js",
+  "bin": { "geocalc-run": "bin/geocalc-run.js" },
   "scripts": {
     "start": "electron .",
     "test": "node --test",
