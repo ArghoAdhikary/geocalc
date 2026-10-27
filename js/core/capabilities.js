@@ -33,15 +33,19 @@
   const REGISTRY = [
     {
       id: "slope.bishop", module: "slope", method: "Bishop's simplified",
-      dimension: "2D", maturity: "implemented", phase: "B", priority: "P0",
+      dimension: "2D", maturity: "verified", phase: "B", priority: "P0",
       references: ["Bishop (1955), Géotechnique 5(1)"],
-      notes: "Circular slip surface, method of slices. Not yet benchmark-verified."
+      evidence: ["benchmark:slope.bishop.discretization", "benchmark:slope.bishop.ge.fellenius"],
+      envelope: "Homogeneous soil, single circular slip surface, pore pressure via rᵤ. No reinforcement/seismic/non-circular.",
+      notes: "Circular slip surface, method of slices. Verified against analytical/convergence benchmarks within the stated envelope; independent review pending before release."
     },
     {
       id: "slope.fellenius", module: "slope", method: "Fellenius (ordinary)",
-      dimension: "2D", maturity: "implemented", phase: "B", priority: "P0",
+      dimension: "2D", maturity: "verified", phase: "B", priority: "P0",
       references: ["Fellenius (1936)"],
-      notes: "Circular slip surface, ordinary method of slices."
+      evidence: ["benchmark:slope.fellenius.infinite", "benchmark:slope.fellenius.recompute"],
+      envelope: "Homogeneous soil, circular/planar slip surface, pore pressure via rᵤ.",
+      notes: "Ordinary method of slices. Verified against the analytical infinite-slope case and independent recomputation; independent review pending before release."
     },
     {
       id: "slope.morgenstern", module: "slope", method: "Morgenstern–Price",
@@ -51,15 +55,27 @@
     },
     {
       id: "seep.steady", module: "seep", method: "Saturated steady-state (FD)",
-      dimension: "2D", maturity: "implemented", phase: "B", priority: "P0",
+      dimension: "2D", maturity: "verified", phase: "B", priority: "P0",
       references: ["Laplace equation; finite differences"],
-      notes: "Homogeneous isotropic confined flow with cutoff. Not benchmark-verified."
+      evidence: ["benchmark:seep.steady.linear", "benchmark:seep.steady.balance"],
+      envelope: "Homogeneous isotropic confined flow, rectangular domain, prescribed-head boundaries (balance ≤0.1%).",
+      notes: "Verified against the 1D Darcy analytical field and global balance within the stated envelope; cutoff-wall and layered cases carry their own evidence before release."
     },
     {
-      id: "seep.transient", module: "seep", method: "Saturated transient",
-      dimension: "2D", maturity: "conceptual", phase: "B", priority: "P0",
-      references: ["Diffusion form of the flow equation"],
-      notes: "Planned."
+      id: "seep.transient", module: "seep", method: "Saturated transient (implicit)",
+      dimension: "2D", maturity: "verified", phase: "B", priority: "P0",
+      references: ["Diffusion form of the flow equation; backward Euler"],
+      evidence: ["benchmark:seep.transient.analytical", "benchmark:seep.transient.balance"],
+      envelope: "1D saturated transient diffusion, Dirichlet + no-flow, uniform storativity (balance ≤0.5%).",
+      notes: "Implicit (unconditionally stable) time stepping. Verified against the 1D analytical series solution and cumulative balance; 2D/layered cases pending their own benchmarks."
+    },
+    {
+      id: "feflow.steady", module: "seep", method: "FE steady flow (triangular mesh)",
+      dimension: "2D", maturity: "verified", phase: "B", priority: "P0",
+      references: ["Galerkin finite elements, linear (CST) triangles"],
+      evidence: ["benchmark:feflow.steady.linear", "benchmark:feflow.steady.balance"],
+      envelope: "Homogeneous rectangular domain, prescribed-head boundaries; linear FE reproduces the analytical field exactly.",
+      notes: "Finite-element meshing for flow. Verified against the analytical linear field and nodal reaction balance within the stated envelope."
     },
     {
       id: "seep.unsaturated", module: "seep", method: "Unsaturated flow",
@@ -110,7 +126,10 @@
     if (!c) return "";
     const m = maturityInfo(c.maturity);
     if (m.rank >= MATURITY.released.rank) return "";
-    if (m.rank >= MATURITY.verified.rank) return `Verified for stated benchmarks only — ${c.method}.`;
+    if (m.rank >= MATURITY.verified.rank)
+      return `Verified against analytical benchmarks for the stated envelope — ${c.method}. ` +
+             (c.envelope ? `Envelope: ${c.envelope} ` : "") +
+             `Independent review (AC-09) pending before release.`;
     return `Demonstration result — method "${c.method}" is ${m.label}. Not verified for design use.`;
   }
 

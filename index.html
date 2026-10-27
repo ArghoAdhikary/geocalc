@@ -22,6 +22,10 @@
       <button id="btn_open" class="ribbon-txt" title="Open project (Cmd/Ctrl+O)">Open</button>
       <button id="btn_save" class="ribbon-txt" title="Save project (Cmd/Ctrl+S)">Save</button>
     </div>
+    <div class="file-grp">
+      <button id="btn_report" class="ribbon-txt" title="Export an HTML report of the current analysis">Report</button>
+      <button id="btn_export" class="ribbon-txt" title="Export raw result data (CSV/JSON)">Export</button>
+    </div>
     <button id="btn_compute" class="compute">▶ Compute</button>
     <button id="btn_chat" class="ribbon-ico" title="Toggle AI assistant">💬</button>
   </div>
@@ -36,12 +40,13 @@
       <li class="tnode root" id="tree_name">Untitled project</li>
       <li class="tnode group">Data</li>
       <li class="tnode child" data-tab="materials"><span class="ti">▣</span> Materials</li>
+      <li class="tnode child" data-tab="validation"><span class="ti">✓</span> Validation</li>
       <li class="tnode group">Analyses</li>
       <li class="tnode child active" data-tab="slope"><span class="ti">▦</span> Slope stability</li>
       <li class="tnode child" data-tab="seep"><span class="ti">≈</span> Seepage</li>
       <li class="tnode child" data-tab="sigma"><span class="ti">◫</span> Stress–deformation</li>
     </ul>
-    <div class="tree-note">Phase A platform build. Solver results are <b>demonstration</b> output from methods that are <i>implemented but not benchmark-verified</i> — not for design use.</div>
+    <div class="tree-note">Phase B. <b>Verified</b> methods carry analytical benchmark evidence (see <i>Validation</i>) and apply only within their stated envelope; others are <b>demonstration</b> only. Independent review (AC-09) pending before release.</div>
   </nav>
 
   <!-- Properties (inputs) -->
@@ -52,6 +57,14 @@
       <div id="mat_table" class="mat-table"></div>
       <button id="mat_add" class="minor">+ Add material</button>
       <p class="note">Edit values here; analyses pick a material and inherit its properties (you can still override per analysis).</p>
+    </div>
+
+    <!-- VALIDATION -->
+    <div id="props-validation" class="propset">
+      <div class="props-title">Validation <small>numerical benchmark evidence</small></div>
+      <p class="note">Each method is labeled <b>Verified</b> only when its analytical benchmarks pass with tolerances fixed in advance (spec §18). These run in CI before every release.</p>
+      <button id="bench_run" class="minor">Run benchmarks</button>
+      <div id="bench_table" class="bench-table"></div>
     </div>
 
     <!-- SLOPE -->
@@ -115,6 +128,14 @@
         <label>Position x (m)<input id="p_wall_x" type="number" value="20" step="1"></label>
         <label>Depth from top (m)<input id="p_wall_d" type="number" value="12" step="1"></label>
       </fieldset>
+      <fieldset>
+        <legend>Analysis mode</legend>
+        <label><input id="p_transient" type="checkbox"> Transient (implicit)</label>
+        <label>Storativity S (1/m)<input id="p_S" type="number" value="0.01" step="0.005"></label>
+        <label>Initial head h₀ (m)<input id="p_h0" type="number" value="4" step="0.5"></label>
+        <label>End time (days)<input id="p_tEnd" type="number" value="2" step="0.5"></label>
+        <label>Time step (days)<input id="p_dt" type="number" value="0.05" step="0.01"></label>
+      </fieldset>
       <div id="p_result" class="result"></div>
     </div>
 
@@ -157,6 +178,7 @@
   <main class="viewport">
     <div class="vp-stage">
       <div id="vp-materials" class="vp"><div class="vp-note"><b>Materials library</b><br>Define soils here, then select them in each analysis. This is project data, not a solver — there is nothing to compute.</div></div>
+      <div id="vp-validation" class="vp"><div class="vp-note"><b>Numerical validation</b><br>Run the benchmark suite (left) to see each method's analytical evidence, error, and tolerance. A method is marked Verified only when its benchmarks pass.</div></div>
       <div id="vp-slope" class="vp active"><canvas id="s_canvas"></canvas></div>
       <div id="vp-seep" class="vp"><canvas id="p_canvas"></canvas></div>
       <div id="vp-sigma" class="vp"><canvas id="g_canvas"></canvas></div>
@@ -220,14 +242,16 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "2.0.0";</script>
+<script>window.GC_VERSION = "3.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>
 <script src="js/linalg.js"></script>
 <script src="js/slope.js"></script>
 <script src="js/seep.js"></script>
+<script src="js/feflow.js"></script>
 <script src="js/sigma.js"></script>
+<script src="js/core/benchmarks.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/app.js"></script>
 </body>

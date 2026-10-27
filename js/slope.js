@@ -144,5 +144,48 @@
     return { prof, best, toeX };
   }
 
-  global.Slope = { analyze, groundProfile, surfaceY };
-})(window);
+  // ---- Phase B: fixed-circle evaluation and analytical reference cases ----
+
+  // Factor of safety for one explicitly specified circle (no search). Used by
+  // benchmarks and by user-specified-surface workflows. Returns both methods.
+  function foSForCircle(p, xc, yc, R, nSlices) {
+    const prof = groundProfile(p);
+    const n = nSlices || p.nslices || 30;
+    const fel = circleFoS(p, prof, xc, yc, R, "fellenius", n);
+    const bis = circleFoS(p, prof, xc, yc, R, "bishop", n);
+    return {
+      fellenius: fel ? fel.fos : null,
+      bishop: bis ? bis.fos : null,
+      slices: fel ? fel.slices : (bis ? bis.slices : null)
+    };
+  }
+
+  // Ordinary (Fellenius) factor of safety for an infinite (planar) slope,
+  // computed with the general method-of-slices summation on a surface parallel
+  // to the slope face. For identical slices this must equal the closed form
+  //   F = (c' + (gamma*z*cos^2(b) - u)*tan(phi')) / (gamma*z*sin(b)*cos(b)),
+  // which gives an analytical verification of the slice mechanics.
+  function planarFellenius(c, phiDeg, gamma, z, betaDeg, ru, n) {
+    const phi = phiDeg * Math.PI / 180, beta = betaDeg * Math.PI / 180;
+    const b = 1, N = n || 10;
+    let num = 0, den = 0;
+    for (let i = 0; i < N; i++) {
+      const alpha = beta, h = z;
+      const W = gamma * h * b, u = ru * gamma * h, dl = b / Math.cos(alpha);
+      num += c * dl + Math.max(0, W * Math.cos(alpha) - u * dl) * Math.tan(phi);
+      den += W * Math.sin(alpha);
+    }
+    return num / den;
+  }
+
+  // Closed-form infinite-slope factor of safety (independent reference).
+  function infiniteSlopeClosedForm(c, phiDeg, gamma, z, betaDeg, ru) {
+    const phi = phiDeg * Math.PI / 180, beta = betaDeg * Math.PI / 180;
+    const u = ru * gamma * z;
+    return (c + (gamma * z * Math.cos(beta) * Math.cos(beta) - u) * Math.tan(phi)) /
+           (gamma * z * Math.sin(beta) * Math.cos(beta));
+  }
+
+  global.Slope = { analyze, groundProfile, surfaceY, foSForCircle, planarFellenius, infiniteSlopeClosedForm };
+})(typeof window !== "undefined" ? window : globalThis);
+

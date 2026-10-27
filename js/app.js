@@ -6,7 +6,7 @@
 
   // ---------------- Analysis switching (ribbon tabs + project tree) ----------------
   let current = "slope";
-  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", materials: "Materials library" };
+  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", materials: "Materials library", validation: "Validation" };
   const statusStore = {};
   function setStatus(mod, main, right) {
     statusStore[mod] = { main, right: right || "" };
@@ -143,6 +143,7 @@
   }
   function runSeep() {
     const p = readSeep();
+    if ($("p_transient") && $("p_transient").checked) { runSeepTransient(p); return; }
     const s = window.Seep.solve(p);
     last.seep = { p, s };
     $("p_result").innerHTML =
@@ -436,7 +437,7 @@
 
   function methodIdFor(mod) {
     if (mod === "slope") return $("s_method").value === "fellenius" ? "slope.fellenius" : "slope.bishop";
-    if (mod === "seep") return "seep.steady";
+    if (mod === "seep") return ($("p_transient") && $("p_transient").checked) ? "seep.transient" : "seep.steady";
     if (mod === "sigma") return "sigma.elastic";
     return null;
   }
@@ -456,7 +457,7 @@
   }
   function onViewChanged(mod) {
     const compute = $("btn_compute");
-    if (mod === "materials") { compute.disabled = true; compute.style.opacity = .4; }
+    if (mod === "materials" || mod === "validation") { compute.disabled = true; compute.style.opacity = .4; }
     else { compute.disabled = false; compute.style.opacity = 1; setBadge(mod); }
   }
 
@@ -521,7 +522,125 @@
   function note(msg) { $("status_right").textContent = msg; }
 
   function pickFile() { return new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = ".gcp,application/json"; i.onchange = () => res(i.files[0] || null); i.click(); }); }
-  function downloadFile(name, content) { const b = new Blob([content], { type: "application/json" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); }
+  function downloadFile(name, content, type) { const b = new Blob([content], { type: type || "application/octet-stream" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); }
+
+  // ---- Phase B: transient seepage, validation view, reports & exports ----
+  function runSeepTransient(basep) {
+    const tp = Object.assign({}, basep, { S: num("p_S"), h0: num("p_h0"), tEnd: num("p_tEnd"), dt: num("p_dt") });
+    const t = window.Seep.solveTransient(tp);
+    const s = computeSeepDisplay(t);
+    last.seep = { p: tp, s, transient: t };
+    $("p_result").innerHTML =
+      `<div class="big">${(t.balanceError * 100).toFixed(2)}% <span class="muted" style="font-size:14px">balance error</span></div>
+       <div class="muted">Transient run · ${t.nSteps} steps to t = ${t.tEnd} d</div>
+       <table>
+        <tr><td>Storage change</td><td>${t.storage.toFixed(3)} m³/m</td></tr>
+        <tr><td>Net inflow</td><td>${t.netInflow.toFixed(3)} m³/m</td></tr>
+        <tr><td>Grid</td><td>${t.nx}×${t.ny}</td></tr>
+       </table>`;
+    setStatus("seep", `Seepage (transient) — balance error ${(t.balanceError * 100).toFixed(2)}%`, `${t.nSteps} steps`);
+    disclaim("seep", "p_result");
+    draw.seep(last.seep);
+  }
+  function computeSeepDisplay(t) {
+    const { NX, NY, nx, ny, dx, dy, h, active } = t;
+    const idx = (i, j) => j * NX + i;
+    let hMin = Infinity, hMax = -Infinity;
+    for (let n = 0; n < h.length; n++) { if (!active[n]) continue; if (h[n] < hMin) hMin = h[n]; if (h[n] > hMax) hMax = h[n]; }
+    const grad = new Float64Array(h.length); let maxGrad = 0, exitGrad = 0;
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+      const n = idx(i, j); if (!active[n]) { grad[n] = 0; continue; }
+      const iL = active[idx(Math.max(0, i - 1), j)] ? idx(Math.max(0, i - 1), j) : n;
+      const iR = active[idx(Math.min(nx, i + 1), j)] ? idx(Math.min(nx, i + 1), j) : n;
+      const jU = (j < ny && active[idx(i, j + 1)]) ? idx(i, j + 1) : n;
+      const jD = (j > 0 && active[idx(i, j - 1)]) ? idx(i, j - 1) : n;
+      const g = Math.hypot((h[iL] - h[iR]) / (2 * dx), (h[jD] - h[jU]) / (2 * dy));
+      grad[n] = g; if (g > maxGrad) maxGrad = g; if (j === ny) exitGrad = Math.max(exitGrad, g);
+    }
+    return { NX, NY, nx, ny, dx, dy, h, active, grad, hMin, hMax, maxGrad, exitGrad, q: 0, k: t.k, wallI: t.wallI, wallRows: t.wallRows };
+  }
+
+  function renderBench() {
+    const host = $("bench_table"); if (!host || !window.Benchmarks) return;
+    host.innerHTML = '<div class="bench-summary">Running…</div>';
+    requestAnimationFrame(() => {
+      const results = window.Benchmarks.run();
+      const pass = results.filter(r => r.pass).length;
+      let html = `<div class="bench-summary">${pass}/${results.length} benchmarks passing</div>`;
+      for (const r of results) {
+        const errStr = r.error_message ? r.error_message : (typeof r.error === "number" ? r.error.toExponential(2) : r.error);
+        html += `<div class="bench-row">
+          <div class="bh"><span class="bstat ${r.pass ? "pass" : "fail"}">${r.pass ? "PASS" : "FAIL"}</span><span class="bttl">${r.title}</span></div>
+          <div class="bmeta">${r.metric}: ${errStr} (tol ${r.tol}) · ${r.method}</div>
+          <div class="bsrc">${r.source}</div>
+        </div>`;
+      }
+      host.innerHTML = html;
+    });
+  }
+
+  function activeAnalysis() { return (current === "materials" || current === "validation") ? "slope" : current; }
+  function inputsTable(mod) {
+    const a = project.analyses[mod]; let rows = "";
+    for (const k in a) rows += `<tr><td>${k}</td><td>${a[k]}</td></tr>`;
+    return `<table><tr><th>Parameter</th><th>Value</th></tr>${rows}</table>`;
+  }
+  function summarizeResult(mod) {
+    if (mod === "slope" && last.slope && last.slope.out.best) { const b = last.slope.out.best; return { fos: b.fos, centre: [b.xc, b.yc], radius: b.R, slices: b.slices.length }; }
+    if (mod === "seep" && last.seep) { return last.seep.transient ? { balanceError: last.seep.transient.balanceError, storage: last.seep.transient.storage, netInflow: last.seep.transient.netInflow } : { q: last.seep.s.q, maxGrad: last.seep.s.maxGrad, exitGrad: last.seep.s.exitGrad }; }
+    if (mod === "sigma" && last.sigma) { const m = last.sigma.m; return { maxSettle: m.maxSettle, elements: m.tris.length }; }
+    return null;
+  }
+  function buildReportHTML() {
+    syncDomToProject();
+    const mod = activeAnalysis();
+    const methodId = methodIdFor(mod);
+    const C = window.Capabilities, cap = C.byId(methodId), mat = C.maturityInfo(cap.maturity);
+    const resultHTML = $(mod === "slope" ? "s_result" : mod === "seep" ? "p_result" : "g_result").innerHTML;
+    const now = new Date().toISOString();
+    const bench = window.Benchmarks ? window.Benchmarks.run().filter(b => b.method === methodId) : [];
+    const benchRows = bench.map(b => `<tr><td>${b.pass ? "PASS" : "FAIL"}</td><td>${b.title}</td><td>${typeof b.error === "number" ? b.error.toExponential(2) : b.error}</td><td>${b.tol}</td></tr>`).join("");
+    const disc = mat.rank < C.MATURITY.released.rank ? C.resultDisclaimer(methodId) : "";
+    return `<!doctype html><html><head><meta charset="utf-8"><title>GeoCalc Pro report — ${TITLE[mod]}</title>
+<style>body{font:14px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;color:#1c2733;max-width:820px;margin:32px auto;padding:0 20px}
+h1{font-size:22px}h2{font-size:16px;border-bottom:1px solid #ccc;padding-bottom:4px;margin-top:26px}
+table{border-collapse:collapse;width:100%;margin:8px 0}td,th{border:1px solid #ddd;padding:6px 9px;text-align:left;font-size:13px}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;color:#fff;font-size:12px;font-weight:700;background:${mat.color}}
+.warn{background:#fff6e2;border:1px solid #f0d79a;padding:10px;border-radius:7px;color:#9a6a00;margin:10px 0}
+.muted{color:#667}.big{font-size:22px;font-weight:800}</style></head><body>
+<h1>GeoCalc Pro — ${TITLE[mod]} report</h1>
+<p class="muted">Project: <b>${project.name}</b> · revision ${project.revision} · generated ${now} · app v${window.GC_VERSION}</p>
+<h2>Method and maturity</h2>
+<p>${cap.method} <span class="badge">${mat.label}</span></p>
+<p class="muted">${cap.notes || ""}</p>
+${cap.envelope ? `<p><b>Validated envelope:</b> ${cap.envelope}</p>` : ""}
+<p class="muted">References: ${(cap.references || []).join("; ") || "—"}</p>
+${disc ? `<div class="warn">${disc}</div>` : ""}
+<h2>Inputs (supplied)</h2>
+${inputsTable(mod)}
+<h2>Result (calculated)</h2>
+<div>${resultHTML}</div>
+${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><th>Benchmark</th><th>Error</th><th>Tolerance</th></tr>${benchRows}</table>` : ""}
+<h2>Limitations and provenance</h2>
+<ul>
+<li>Independently implemented from public methods; applicable only within the validated envelope stated above.</li>
+<li>This report distinguishes supplied inputs from calculated results; demonstration or unverified status is not removable.</li>
+<li>Provenance: project revision ${project.revision}, app v${window.GC_VERSION}, generated ${now}.</li>
+</ul></body></html>`;
+  }
+  function exportReport() {
+    const mod = activeAnalysis();
+    downloadFile((project.name || "report") + "-" + mod + "-report.html", buildReportHTML(), "text/html");
+    note("Report exported");
+  }
+  function exportData() {
+    const mod = activeAnalysis(); syncDomToProject();
+    const payload = { app: "GeoCalc Pro", version: window.GC_VERSION, generated: new Date().toISOString(),
+      project: { name: project.name, revision: project.revision }, module: mod,
+      method: methodIdFor(mod), inputs: project.analyses[mod], result: summarizeResult(mod) };
+    downloadFile((project.name || "data") + "-" + mod + ".json", JSON.stringify(payload, null, 2), "application/json");
+    note("Data exported");
+  }
 
   function doNew() { project = Project.newProject(); currentPath = null; applyProjectToDom(); recomputeAll(); note("New project"); }
   async function doOpen() {
@@ -556,6 +675,10 @@
     $("btn_new").addEventListener("click", doNew);
     $("btn_open").addEventListener("click", doOpen);
     $("btn_save").addEventListener("click", () => doSave(false));
+    $("btn_report").addEventListener("click", exportReport);
+    $("btn_export").addEventListener("click", exportData);
+    $("bench_run").addEventListener("click", renderBench);
+    $("p_transient").addEventListener("change", () => setBadge("seep"));
     if (window.gcDesktop && gcDesktop.onMenu) gcDesktop.onMenu(a => { const m = { new: doNew, open: doOpen, save: () => doSave(false), saveAs: () => doSave(true) }; if (m[a]) m[a](); });
     $("tree_name").textContent = project.name;
   }

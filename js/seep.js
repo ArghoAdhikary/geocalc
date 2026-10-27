@@ -121,5 +121,100 @@
     };
   }
 
-  global.Seep = { solve };
-})(window);
+  // ---- Phase B: transient saturated flow (implicit backward Euler) ----
+  //
+  // Solves  S * dh/dt = k * ( d2h/dx2 + d2h/dy2 )  on the structured grid.
+  // Boundaries: left = prescribed head (hu, Dirichlet); right = Dirichlet (hd)
+  // or no-flow; top/bottom = no-flow. Initial condition: uniform head h0.
+  // Backward Euler is unconditionally stable; each step is solved by SOR.
+  //
+  // Returns the final head field plus a cumulative water-balance error
+  // (|storage change - net boundary inflow| normalised), for benchmarking.
+  function solveTransient(p) {
+    const W = p.W, D = p.D;
+    const nx = Math.max(4, Math.min(400, p.nx | 0));
+    const dx = W / nx;
+    const ny = Math.max(1, Math.round(D / dx));
+    const dy = D / ny;
+    const NX = nx + 1, NY = ny + 1;
+    const idx = (i, j) => j * NX + i;
+
+    const rightDirichlet = p.rightBC !== "noflow";
+    const S = p.S > 0 ? p.S : 1e-3;         // storativity (1/m)
+    const h0 = (p.h0 != null) ? p.h0 : p.hd;
+    const tEnd = p.tEnd > 0 ? p.tEnd : 1;
+    const dt = p.dt > 0 ? p.dt : tEnd / 50;
+
+    const h = new Float64Array(NX * NY).fill(h0);
+    const active = new Uint8Array(NX * NY).fill(1);
+    const fixed = new Uint8Array(NX * NY);
+    for (let j = 0; j < NY; j++) { h[idx(0, j)] = p.hu; fixed[idx(0, j)] = 1; }
+    if (rightDirichlet) for (let j = 0; j < NY; j++) { h[idx(nx, j)] = p.hd; fixed[idx(nx, j)] = 1; }
+
+    let wallI = -1, wallRows = 0;
+    if (p.wall_on) {
+      wallI = Math.max(1, Math.min(nx - 1, Math.round(p.wall_x / dx)));
+      wallRows = Math.max(0, Math.min(ny, Math.round(p.wall_d / dy)));
+      for (let j = 0; j < wallRows; j++) active[idx(wallI, j)] = 0;
+    }
+
+    const cx = 1 / (dx * dx), cy = 1 / (dy * dy);
+    const sdt = S / dt;
+    const omega = 1.7;
+    const hOld = new Float64Array(h.length);
+
+    let netInflow = 0;
+    const nSteps = Math.max(1, Math.round(tEnd / dt));
+    for (let step = 0; step < nSteps; step++) {
+      hOld.set(h);
+      // Implicit solve for this step.
+      for (let it = 0; it < 2000; it++) {
+        let err = 0;
+        for (let j = 0; j < NY; j++) {
+          for (let i = 0; i < NX; i++) {
+            const n = idx(i, j);
+            if (fixed[n] || !active[n]) continue;
+            const aL = (i > 0 && active[idx(i - 1, j)]) ? cx : 0;
+            const aR = (i < nx && active[idx(i + 1, j)]) ? cx : 0;
+            const aD = (j > 0 && active[idx(i, j - 1)]) ? cy : 0;
+            const aU = (j < ny && active[idx(i, j + 1)]) ? cy : 0;
+            const sumN = (aL ? aL * h[idx(i - 1, j)] : 0) + (aR ? aR * h[idx(i + 1, j)] : 0) +
+                         (aD ? aD * h[idx(i, j - 1)] : 0) + (aU ? aU * h[idx(i, j + 1)] : 0);
+            const diag = sdt + aL + aR + aD + aU;
+            const hNew = (sdt * hOld[n] + sumN) / diag;
+            const relaxed = h[n] + omega * (hNew - h[n]);
+            err = Math.max(err, Math.abs(relaxed - h[n]));
+            h[n] = relaxed;
+          }
+        }
+        if (err < 1e-9) break;
+      }
+      // Net inflow through the left Dirichlet boundary this step (Darcy).
+      let qLeft = 0;
+      for (let j = 0; j < NY; j++) {
+        const wj = (j === 0 || j === ny) ? 0.5 : 1.0; // trapezoidal in y
+        qLeft += p.k * (h[idx(0, j)] - h[idx(1, j)]) / dx * dy * wj;
+      }
+      netInflow += qLeft * dt;
+    }
+
+    // Storage change over interior (non-fixed) active nodes.
+    let storage = 0;
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+      const n = idx(i, j);
+      if (!active[n] || fixed[n]) continue;
+      const wj = (j === 0 || j === ny) ? 0.5 : 1.0;
+      const wi = (i === 0 || i === nx) ? 0.5 : 1.0;
+      storage += S * (h[n] - h0) * dx * dy * wi * wj;
+    }
+    const scale = Math.max(Math.abs(storage), Math.abs(netInflow), 1e-12);
+    const balanceError = Math.abs(storage - netInflow) / scale;
+
+    return { NX, NY, nx, ny, dx, dy, h, active, S, dt, tEnd, nSteps,
+             storage, netInflow, balanceError, rightDirichlet, wallI, wallRows, k: p.k,
+             headAt: (i, j) => h[idx(i, j)] };
+  }
+
+  global.Seep = { solve, solveTransient };
+})(typeof window !== "undefined" ? window : globalThis);
+

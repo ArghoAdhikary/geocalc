@@ -194,3 +194,15 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
 .vp-note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   text-align: center; color: var(--muted); font-size: 13px; padding: 40px; line-height: 1.7; }
 .vp-note b { color: var(--ink); font-size: 15px; }
+
+/* ---------- Phase B additions ---------- */
+.bench-table { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; }
+.bench-row { border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; background: #f0f4f9; font-size: 12px; }
+.bench-row .bh { display: flex; align-items: center; gap: 8px; }
+.bench-row .bstat { font-weight: 800; font-size: 11px; padding: 1px 7px; border-radius: 20px; color: #fff; }
+.bench-row .bstat.pass { background: var(--good); }
+.bench-row .bstat.fail { background: var(--bad); }
+.bench-row .bttl { font-weight: 600; }
+.bench-row .bmeta { color: var(--muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.bench-row .bsrc { color: var(--muted); margin-top: 2px; font-size: 11px; }
+.bench-summary { font-weight: 700; margin: 4px 0 2px; }
