@@ -32,6 +32,14 @@
   // The registry. `phase` and `priority` follow the specification matrix.
   const REGISTRY = [
     {
+      id: "geometry.editor", module: "geometry", method: "Interactive geometry editor",
+      dimension: "2D", maturity: "implemented", phase: "H", priority: "P0",
+      references: ["Shoelace area; ray-casting point-in-polygon; segment-intersection tests"],
+      evidence: ["unit:geometry.test.js (area, point-in-polygon, self-intersection, templates, round-trip)"],
+      envelope: "Closed polygon regions with per-region material. Exact checks for vertex count, duplicate points, self-intersection and zero area. Inter-region overlap is a labelled heuristic. Derives an upper-envelope ground profile for slope analysis.",
+      notes: "Mouse + coordinate-table editing, grid/snap, pan/zoom, undo/redo, templates. Geometry predicates are unit-tested against exact values; this is an authoring tool, not a benchmark-gated numerical method, so it is 'implemented', not 'verified'."
+    },
+    {
       id: "slope.bishop", module: "slope", method: "Bishop's simplified",
       dimension: "2D", maturity: "verified", phase: "B", priority: "P0",
       references: ["Bishop (1955), Géotechnique 5(1)"],

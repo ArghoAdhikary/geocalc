@@ -12,6 +12,7 @@
 <div class="ribbon">
   <div class="ribbon-brand"><span class="logo">▟</span><span class="brand-name">GeoCalc <b>Pro</b></span></div>
   <div class="ribbon-tabs" id="ribbon_tabs">
+    <button class="rtab" data-tab="geometry">Geometry</button>
     <button class="rtab active" data-tab="slope">Slope Stability</button>
     <button class="rtab" data-tab="seep">Seepage</button>
     <button class="rtab" data-tab="sigma">Stress–Deformation</button>
@@ -39,6 +40,7 @@
     <ul class="tree-list">
       <li class="tnode root" id="tree_name">Untitled project</li>
       <li class="tnode group">Data</li>
+      <li class="tnode child" data-tab="geometry"><span class="ti">◇</span> Geometry</li>
       <li class="tnode child" data-tab="materials"><span class="ti">▣</span> Materials</li>
       <li class="tnode child" data-tab="validation"><span class="ti">✓</span> Validation</li>
       <li class="tnode group">Analyses</li>
@@ -56,6 +58,53 @@
 
   <!-- Properties (inputs) -->
   <aside class="props">
+    <!-- GEOMETRY -->
+    <div id="props-geometry" class="propset">
+      <div class="props-title">Geometry editor <small>points · polylines · regions</small></div>
+      <fieldset>
+        <legend>Tool</legend>
+        <div class="geo-tools" id="geo_tools">
+          <button class="geo-tool active" data-tool="select" title="Select &amp; move vertices (V)">Select / move</button>
+          <button class="geo-tool" data-tool="draw" title="Draw a new region: click vertices, double-click or Close to finish (D)">Add region</button>
+          <button class="geo-tool" data-tool="addv" title="Insert a vertex on an edge of the selected region (I)">Insert vertex</button>
+          <button class="geo-tool" data-tool="delv" title="Delete the vertex you click (X)">Delete vertex</button>
+        </div>
+        <div class="geo-actions">
+          <button id="geo_close" class="minor" title="Finish the region being drawn">Close region</button>
+          <button id="geo_undo" class="minor" title="Undo (Cmd/Ctrl+Z)">↩ Undo</button>
+          <button id="geo_redo" class="minor" title="Redo (Cmd/Ctrl+Shift+Z)">Redo ↪</button>
+          <button id="geo_fit" class="minor" title="Fit model to view (F)">Fit</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Grid &amp; snap</legend>
+        <label class="inline"><input id="geo_snap" type="checkbox" checked> Snap to grid</label>
+        <label>Grid spacing (m)<input id="geo_gridspace" type="number" value="1" step="0.5" min="0.1"></label>
+        <label class="inline"><input id="geo_showgrid" type="checkbox" checked> Show grid</label>
+      </fieldset>
+      <fieldset>
+        <legend>Regions</legend>
+        <div id="geo_region_list" class="geo-region-list"></div>
+        <label>Material of selected region
+          <select id="geo_region_mat" class="matsel"></select>
+        </label>
+        <button id="geo_del_region" class="minor">Delete selected region</button>
+      </fieldset>
+      <fieldset>
+        <legend>Coordinates of selected region (m)</legend>
+        <div id="geo_coord_table" class="geo-coord-table"></div>
+        <button id="geo_add_row" class="minor">+ Add vertex row</button>
+      </fieldset>
+      <fieldset>
+        <legend>Templates</legend>
+        <button id="geo_tpl_slope" class="minor">Slope from slope-tab params</button>
+        <button id="geo_tpl_example" class="minor">Two-layer example</button>
+        <button id="geo_clear" class="minor">Clear all</button>
+        <button id="geo_send_slope" class="minor" title="Use the drawn ground surface as the Slope analysis profile">Send ground profile → Slope</button>
+      </fieldset>
+      <div id="geo_validation" class="result"></div>
+    </div>
+
     <!-- MATERIALS -->
     <div id="props-materials" class="propset">
       <div class="props-title">Materials library <small>shared by all analyses</small></div>
@@ -297,6 +346,7 @@
   <!-- Viewport -->
   <main class="viewport">
     <div class="vp-stage">
+      <div id="vp-geometry" class="vp"><canvas id="geom_canvas"></canvas><div id="geom_hud" class="geom-hud"></div></div>
       <div id="vp-materials" class="vp"><div class="vp-note"><b>Materials library</b><br>Define soils here, then select them in each analysis. This is project data, not a solver — there is nothing to compute.</div></div>
       <div id="vp-validation" class="vp"><div class="vp-note"><b>Numerical validation</b><br>Run the benchmark suite (left) to see each method's analytical evidence, error, and tolerance. A method is marked Verified only when its benchmarks pass.</div></div>
       <div id="vp-slope" class="vp active"><canvas id="s_canvas"></canvas></div>
@@ -367,10 +417,11 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "8.0.0";</script>
+<script>window.GC_VERSION = "9.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>
+<script src="js/geometry.js"></script>
 <script src="js/linalg.js"></script>
 <script src="js/slope.js"></script>
 <script src="js/seep.js"></script>

@@ -19,7 +19,7 @@
 })(this, function () {
   "use strict";
 
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2; // v2 adds the shared geometry model (Phase H)
   const APP = "GeoCalc Pro";
 
   function uid(prefix) {
@@ -61,7 +61,7 @@
     return {
       schemaVersion: SCHEMA_VERSION,
       app: APP,
-      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "8.0.0",
+      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "9.0.0",
       name: name || "Untitled project",
       created: now,
       modified: now,
@@ -70,7 +70,8 @@
         units: { length: "m", unitWeight: "kN/m3", stress: "kPa", permeability: "m/day", angle: "deg" }
       },
       materials: defaultMaterials(),
-      analyses: defaultAnalyses()
+      analyses: defaultAnalyses(),
+      geometry: { regions: [] }   // shared 2D geometry model (Phase H)
     };
   }
 
@@ -101,14 +102,15 @@
   function serialize(project) { return stableStringify(project); }
 
   function migrate(obj) {
-    // Future schema upgrades go here; each must be covered by a round-trip test.
-    if (obj.schemaVersion === SCHEMA_VERSION) return obj;
-    if (obj.schemaVersion < SCHEMA_VERSION) {
-      // No prior versions yet; placeholder for forward migrations.
-      obj.schemaVersion = SCHEMA_VERSION;
-      return obj;
+    // Each forward migration must be covered by a round-trip test.
+    if (obj.schemaVersion > SCHEMA_VERSION)
+      throw new Error(`Project schema v${obj.schemaVersion} is newer than this app supports (v${SCHEMA_VERSION}). Update GeoCalc Pro to open it.`);
+    // v1 -> v2: introduce the shared geometry model (older files simply had none).
+    if (obj.schemaVersion < 2) {
+      if (!obj.geometry || !Array.isArray(obj.geometry.regions)) obj.geometry = { regions: [] };
     }
-    throw new Error(`Project schema v${obj.schemaVersion} is newer than this app supports (v${SCHEMA_VERSION}). Update GeoCalc Pro to open it.`);
+    obj.schemaVersion = SCHEMA_VERSION;
+    return obj;
   }
 
   function deserialize(text) {
@@ -118,6 +120,7 @@
     if (!obj || obj.app !== APP || typeof obj.schemaVersion !== "number")
       throw new Error("Not a recognised GeoCalc Pro project file.");
     obj = migrate(obj);
+    if (!obj.geometry || !Array.isArray(obj.geometry.regions)) obj.geometry = { regions: [] };
     validate(obj);
     return obj;
   }

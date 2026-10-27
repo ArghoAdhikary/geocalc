@@ -35,3 +35,22 @@ test("materialById finds a seeded material", () => {
   assert.ok(P.materialById(pr, "mat_fill"));
   assert.strictEqual(P.materialById(pr, "nope"), null);
 });
+test("new project carries a geometry model at the current schema version", () => {
+  const pr = P.newProject();
+  assert.strictEqual(pr.schemaVersion, 2);
+  assert.ok(pr.geometry && Array.isArray(pr.geometry.regions));
+});
+test("v1 project (no geometry) migrates to v2 with an empty geometry", () => {
+  const v1 = P.newProject("Legacy");
+  delete v1.geometry; v1.schemaVersion = 1;
+  const up = P.deserialize(JSON.stringify(v1));
+  assert.strictEqual(up.schemaVersion, 2);
+  assert.ok(up.geometry && Array.isArray(up.geometry.regions) && up.geometry.regions.length === 0);
+});
+test("a project with geometry round-trips losslessly", () => {
+  const pr = P.newProject("Has geometry");
+  pr.geometry.regions.push({ id: "rgn_x", name: "Fill", materialId: "mat_fill",
+    verts: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 6 }, { x: 0, y: 6 }] });
+  const pr2 = P.deserialize(P.serialize(pr));
+  assert.deepStrictEqual(pr2.geometry, pr.geometry);
+});

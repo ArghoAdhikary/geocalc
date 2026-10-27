@@ -9,6 +9,7 @@ its analytical benchmarks pass — and these run in CI before every release.
 
 | Module | What it does | Maturity |
 |---|---|---|
+| **Geometry editor** | Draw/edit closed polygon regions (points, polylines, regions) by mouse **and** an editable coordinate table; grid/snap, pan/zoom, undo/redo, per-region material, validation (self-intersection, zero area, overlap), slope/two-layer templates, and “send ground profile → Slope” | Implemented (algorithms unit-tested) |
 | **Slope stability** | Method of slices — Fellenius, Bishop, **Spencer** (force + moment); **grid** or **entry-and-exit** circular search; rᵤ, water-table, **or piezometric-line** pore pressure | Verified (envelope) |
 | **Seepage** | 2D steady (FD) and transient (implicit) saturated flow, cutoff wall | Verified (envelope) |
 | **FE flow** | Finite-element meshing for steady flow (triangular elements) | Verified (envelope) |

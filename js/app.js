@@ -6,7 +6,8 @@
 
   // ---------------- Analysis switching (ribbon tabs + project tree) ----------------
   let current = "slope";
-  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", flow3d: "3D flow", prob: "Probabilistic", materials: "Materials library", validation: "Validation" };
+  let slopeCustomProfile = null; // ground surface sent from the geometry editor
+  const TITLE = { geometry: "Geometry editor", slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", flow3d: "3D flow", prob: "Probabilistic", materials: "Materials library", validation: "Validation" };
   const statusStore = {};
   function setStatus(mod, main, right) {
     statusStore[mod] = { main, right: right || "" };
@@ -70,9 +71,11 @@
       exit: { x0: num("s_x0"), x1: num("s_x1"), n: num("s_een") },
       nR: num("s_enr"),
       porePressureMode: $("s_pp").value, wt: num("s_wt"),
-      piezo: parsePiezo($("s_piezo").value), gammaW: 9.81
+      piezo: parsePiezo($("s_piezo").value), gammaW: 9.81,
+      profile: (slopeCustomProfile && slopeCustomProfile.length >= 2) ? slopeCustomProfile : null
     };
   }
+  function clearSlopeProfile() { if (slopeCustomProfile) { slopeCustomProfile = null; note("Using parametric slope geometry"); } }
   const SLOPE_METHOD_LABEL = { bishop: "Bishop simplified", fellenius: "Fellenius (ordinary)", spencer: "Spencer" };
   function slopeMethodLabel(p) {
     const base = SLOPE_METHOD_LABEL[p.method] || p.method;
@@ -561,8 +564,352 @@
     ctx.fillText("Factor of safety", w - pad - 90, h - pad + 24);
   };
 
+  // ================= GEOMETRY EDITOR (Phase H) =================
+  const GEO_PALETTE = ["#d9c38a", "#aec9ec", "#c7b6e2", "#a6d7bf", "#e7b79a", "#cbd79c", "#e6a8b6", "#9fcdd6"];
+  function geoMatColor(id) {
+    if (!project) return "#c9c9c9";
+    const i = project.materials.findIndex(m => m.id === id);
+    return i >= 0 ? GEO_PALETTE[i % GEO_PALETTE.length] : "#c2c2c2";
+  }
+  function geoMatName(id) { const m = project && Project.materialById(project, id); return m ? m.name : "(none)"; }
+  function distToSeg(p, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1e-9;
+    let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2; t = Math.max(0, Math.min(1, t));
+    const qx = a.x + t * dx, qy = a.y + t * dy;
+    return { d: Math.hypot(p.x - qx, p.y - qy), t, q: { x: qx, y: qy } };
+  }
+
+  const geomEditor = {
+    tool: "select", sel: null, selVert: null, draft: null, hover: null, drag: null,
+    view: { scale: 12, ox: 50, oy: 40, fitted: false }, _w: 400, _h: 400,
+    undoStack: [], redoStack: [],
+
+    G() { if (!project.geometry) project.geometry = { regions: [] }; return project.geometry; },
+    region(id) { return this.G().regions.find(r => r.id === id) || null; },
+    sxf(x) { return this.view.ox + x * this.view.scale; },
+    syf(y) { return this._h - this.view.oy - y * this.view.scale; },
+    wxf(px) { return (px - this.view.ox) / this.view.scale; },
+    wyf(py) { return (this._h - this.view.oy - py) / this.view.scale; },
+    snapV(v) { if (!$("geo_snap").checked) return v; const g = parseFloat($("geo_gridspace").value) || 1; return Math.round(v / g) * g; },
+    snapPt(p) { return { x: this.snapV(p.x), y: this.snapV(p.y) }; },
+
+    pushUndo() { this.undoStack.push(Geometry.clone(this.G())); if (this.undoStack.length > 60) this.undoStack.shift(); this.redoStack = []; },
+    undo() { if (!this.undoStack.length) return; this.redoStack.push(Geometry.clone(this.G())); project.geometry = this.undoStack.pop(); this.sel = null; this.selVert = null; this.afterChange(); },
+    redo() { if (!this.redoStack.length) return; this.undoStack.push(Geometry.clone(this.G())); project.geometry = this.redoStack.pop(); this.afterChange(); },
+    afterChange() { if (project) Project.bumpRevision(project); this.render(); this.renderRegionList(); this.renderTable(); this.renderValidation(); },
+
+    setTool(t) {
+      this.tool = t;
+      document.querySelectorAll("#geo_tools .geo-tool").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
+      if (t !== "draw") this.draft = null;
+      this.render();
+    },
+
+    fit() {
+      const bb = Geometry.bbox(this.G());
+      const m = 44, w = this._w, h = this._h;
+      const dx = (bb.x1 - bb.x0) || 40, dy = (bb.y1 - bb.y0) || 20;
+      const s = Math.min((w - 2 * m) / dx, (h - 2 * m) / dy);
+      const sc = Math.max(1, Math.min(200, s));
+      this.view.scale = sc;
+      // centre the model in the viewport (equal x/y scale, no distortion)
+      this.view.ox = (w - dx * sc) / 2 - bb.x0 * sc;
+      this.view.oy = (h - dy * sc) / 2 - bb.y0 * sc;
+    },
+
+    onShow() {
+      if (!this.view.fitted) { this.render(); this.fit(); this.view.fitted = true; }
+      this.syncMatSelect();
+      this.render(); this.renderRegionList(); this.renderTable(); this.renderValidation();
+    },
+
+    syncMatSelect() {
+      const sel = $("geo_region_mat"); if (!sel || !project) return;
+      sel.innerHTML = project.materials.map(m => `<option value="${m.id}">${m.name}</option>`).join("");
+      const r = this.sel && this.region(this.sel);
+      if (r && r.materialId) sel.value = r.materialId;
+    },
+
+    render() {
+      const cv = $("geom_canvas"); if (!cv) return;
+      const { ctx, w, h } = fitCanvas(cv);
+      this._w = w; this._h = h;
+      ctx.clearRect(0, 0, w, h);
+      const sx = x => this.sxf(x), sy = y => this.syf(y);
+      // grid
+      if ($("geo_showgrid").checked) {
+        const g = parseFloat($("geo_gridspace").value) || 1;
+        const x0 = this.wxf(0), x1 = this.wxf(w), y0 = this.wyf(h), y1 = this.wyf(0);
+        ctx.lineWidth = 1; ctx.strokeStyle = "rgba(120,140,170,.14)";
+        const gx = g * (this.view.scale < 8 ? Math.ceil(8 / this.view.scale) : 1);
+        for (let x = Math.ceil(x0 / gx) * gx; x <= x1; x += gx) { ctx.beginPath(); ctx.moveTo(sx(x), 0); ctx.lineTo(sx(x), h); ctx.stroke(); }
+        for (let y = Math.ceil(y0 / gx) * gx; y <= y1; y += gx) { ctx.beginPath(); ctx.moveTo(0, sy(y)); ctx.lineTo(w, sy(y)); ctx.stroke(); }
+      }
+      // axes
+      ctx.strokeStyle = "rgba(90,110,140,.5)"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(sx(0), 0); ctx.lineTo(sx(0), h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, sy(0)); ctx.lineTo(w, sy(0)); ctx.stroke();
+      // regions
+      for (const r of this.G().regions) {
+        if (r.verts.length < 2) continue;
+        ctx.beginPath();
+        r.verts.forEach((v, i) => i ? ctx.lineTo(sx(v.x), sy(v.y)) : ctx.moveTo(sx(v.x), sy(v.y)));
+        ctx.closePath();
+        const issues = Geometry.validateRegion(r).issues;
+        ctx.fillStyle = geoMatColor(r.materialId) + "99";
+        ctx.fill();
+        ctx.lineWidth = r.id === this.sel ? 2.5 : 1.4;
+        ctx.strokeStyle = issues.length ? "#e5604d" : (r.id === this.sel ? "#1f6fd0" : "#5b6677");
+        ctx.stroke();
+        // label
+        if (r.verts.length >= 3) {
+          const c = Geometry.centroid(r.verts);
+          ctx.fillStyle = "#33404f"; ctx.font = "11px -apple-system,sans-serif"; ctx.textAlign = "center";
+          ctx.fillText(r.name, sx(c.x), sy(c.y));
+        }
+        // vertex handles
+        r.verts.forEach((v, idx) => {
+          const selV = this.selVert && this.selVert.r === r.id && this.selVert.idx === idx;
+          const sz = r.id === this.sel ? 4 : 2.5;
+          ctx.fillStyle = selV ? "#1f6fd0" : (r.id === this.sel ? "#fff" : "#8a96a6");
+          ctx.strokeStyle = "#1f6fd0"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.rect(sx(v.x) - sz, sy(v.y) - sz, 2 * sz, 2 * sz); ctx.fill();
+          if (r.id === this.sel) ctx.stroke();
+        });
+      }
+      // draft being drawn
+      if (this.draft && this.draft.length) {
+        ctx.strokeStyle = "#1f8f5a"; ctx.lineWidth = 1.8; ctx.setLineDash([5, 3]);
+        ctx.beginPath(); this.draft.forEach((v, i) => i ? ctx.lineTo(sx(v.x), sy(v.y)) : ctx.moveTo(sx(v.x), sy(v.y)));
+        if (this.hover) ctx.lineTo(sx(this.hover.x), sy(this.hover.y));
+        ctx.stroke(); ctx.setLineDash([]);
+        this.draft.forEach(v => { ctx.fillStyle = "#1f8f5a"; ctx.beginPath(); ctx.arc(sx(v.x), sy(v.y), 3.5, 0, 7); ctx.fill(); });
+      }
+      this.renderHud();
+    },
+
+    renderHud() {
+      const hud = $("geom_hud"); if (!hud) return;
+      const v = Geometry.validate(this.G());
+      const nreg = this.G().regions.length;
+      const pos = this.hover ? `x ${this.hover.x.toFixed(2)}, y ${this.hover.y.toFixed(2)} m` : "";
+      const vstate = nreg === 0 ? "" : (v.ok ? " · ✓ valid" : " · ⚠ issues");
+      hud.textContent = `${this.tool} · ${nreg} region${nreg === 1 ? "" : "s"}${vstate}   ${pos}`;
+    },
+
+    mouseWorld(e) {
+      const r = $("geom_canvas").getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      return { x: this.wxf(px), y: this.wyf(py), px, py };
+    },
+    hitVertex(wld) {
+      const tol = 8;
+      const order = this.G().regions.slice().sort((a, b) => (a.id === this.sel ? -1 : 0) - (b.id === this.sel ? -1 : 0));
+      for (const r of order) for (let idx = 0; idx < r.verts.length; idx++) {
+        if (Math.hypot(this.sxf(r.verts[idx].x) - this.sxf(wld.x), this.syf(r.verts[idx].y) - this.syf(wld.y)) < tol) return { r: r.id, idx };
+      }
+      return null;
+    },
+    regionAt(wld) {
+      const rs = this.G().regions;
+      for (let i = rs.length - 1; i >= 0; i--) if (rs[i].verts.length >= 3 && Geometry.pointInPolygon(wld, rs[i].verts)) return rs[i].id;
+      return null;
+    },
+
+    onDown(e) {
+      const wld = this.mouseWorld(e);
+      if (this.tool === "draw") {
+        if (!this.draft) this.draft = [];
+        this.draft.push(this.snapPt(wld)); this.render(); return;
+      }
+      if (this.tool === "delv") {
+        const hv = this.hitVertex(wld);
+        if (hv) { const r = this.region(hv.r); if (r.verts.length > 3) { this.pushUndo(); r.verts.splice(hv.idx, 1); this.afterChange(); } else { this.pushUndo(); this.G().regions = this.G().regions.filter(x => x.id !== hv.r); this.sel = null; this.afterChange(); } }
+        return;
+      }
+      if (this.tool === "addv") {
+        const r = this.sel && this.region(this.sel); if (!r) return;
+        let best = null;
+        for (let i = 0; i < r.verts.length; i++) {
+          const a = r.verts[i], b = r.verts[(i + 1) % r.verts.length];
+          const dd = distToSeg(wld, a, b);
+          const dpx = dd.d * this.view.scale;
+          if (dpx < 12 && (!best || dd.d < best.d)) best = { i, d: dd.d, q: dd.q };
+        }
+        if (best) { this.pushUndo(); r.verts.splice(best.i + 1, 0, this.snapPt(best.q)); this.selVert = { r: r.id, idx: best.i + 1 }; this.afterChange(); }
+        return;
+      }
+      // select / move
+      const hv = this.hitVertex(wld);
+      if (hv) { this.sel = hv.r; this.selVert = hv; this.syncMatSelect(); this.pushUndo(); this.drag = { type: "vert" }; this.renderRegionList(); this.renderTable(); this.render(); return; }
+      const rid = this.regionAt(wld);
+      if (rid) { this.sel = rid; this.selVert = null; this.syncMatSelect(); this.renderRegionList(); this.renderTable(); this.render(); this.drag = { type: "maybepan", startPx: e.clientX, startPy: e.clientY, ox: this.view.ox, oy: this.view.oy }; return; }
+      this.sel = null; this.selVert = null; this.syncMatSelect(); this.renderRegionList(); this.renderTable();
+      this.drag = { type: "pan", startPx: e.clientX, startPy: e.clientY, ox: this.view.ox, oy: this.view.oy };
+      this.render();
+    },
+    onMove(e) {
+      const wld = this.mouseWorld(e);
+      this.hover = { x: wld.x, y: wld.y };
+      if (this.drag && this.drag.type === "vert" && this.selVert) {
+        const r = this.region(this.selVert.r); if (r) { r.verts[this.selVert.idx] = this.snapPt(wld); this.render(); this.renderTable(); return; }
+      }
+      if (this.drag && (this.drag.type === "pan" || this.drag.type === "maybepan")) {
+        this.view.ox = this.drag.ox + (e.clientX - this.drag.startPx);
+        this.view.oy = this.drag.oy - (e.clientY - this.drag.startPy);
+        this.render(); return;
+      }
+      this.render();
+    },
+    onUp() {
+      if (this.drag && this.drag.type === "vert") { this.afterChange(); }
+      this.drag = null;
+    },
+    onDblClick() { if (this.tool === "draw") this.finishDraft(); },
+
+    finishDraft() {
+      if (!this.draft || this.draft.length < 3) { this.draft = null; this.render(); return; }
+      const matId = $("geo_region_mat").value || (project.materials[0] && project.materials[0].id);
+      this.pushUndo();
+      const r = Geometry.newRegion("Region " + (this.G().regions.length + 1), matId, this.draft);
+      this.G().regions.push(r); this.draft = null; this.sel = r.id; this.selVert = null;
+      this.setTool("select"); this.afterChange();
+    },
+
+    onWheel(e) {
+      e.preventDefault();
+      const r = $("geom_canvas").getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const wx = this.wxf(px), wy = this.wyf(py);
+      const f = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      this.view.scale = Math.max(1, Math.min(400, this.view.scale * f));
+      this.view.ox = px - wx * this.view.scale;
+      this.view.oy = this._h - py - wy * this.view.scale;
+      this.render();
+    },
+
+    renderRegionList() {
+      const host = $("geo_region_list"); if (!host) return;
+      const rs = this.G().regions;
+      if (!rs.length) { host.innerHTML = '<p class="note">No regions yet. Use <b>Add region</b> to draw one, or a template below.</p>'; return; }
+      host.innerHTML = rs.map(r => {
+        const iss = Geometry.validateRegion(r).issues.length;
+        return `<div class="geo-reg-row${r.id === this.sel ? " sel" : ""}" data-id="${r.id}">
+          <span class="geo-sw" style="background:${geoMatColor(r.materialId)}"></span>
+          <span class="geo-reg-name">${r.name}</span>
+          <span class="geo-reg-meta">${r.verts.length >= 3 ? Geometry.area(r.verts).toFixed(1) + " m²" : "—"}${iss ? ' <span class="geo-bad">⚠</span>' : ""}</span>
+        </div>`;
+      }).join("");
+      host.querySelectorAll(".geo-reg-row").forEach(row => row.addEventListener("click", () => {
+        this.sel = row.dataset.id; this.selVert = null; this.syncMatSelect(); this.renderRegionList(); this.renderTable(); this.render();
+      }));
+    },
+
+    renderTable() {
+      const host = $("geo_coord_table"); if (!host) return;
+      const r = this.sel && this.region(this.sel);
+      if (!r) { host.innerHTML = '<p class="note">Select a region to edit its vertices.</p>'; return; }
+      host.innerHTML = '<div class="geo-ch"><span>#</span><span>x (m)</span><span>y (m)</span><span></span></div>' +
+        r.verts.map((v, i) => `<div class="geo-cr" data-i="${i}">
+          <span>${i + 1}</span>
+          <input class="geo-cx" type="number" step="any" value="${+v.x.toFixed(4)}">
+          <input class="geo-cy" type="number" step="any" value="${+v.y.toFixed(4)}">
+          <button class="geo-rowdel" title="Delete vertex">✕</button>
+        </div>`).join("");
+      host.querySelectorAll(".geo-cr").forEach(row => {
+        const i = +row.dataset.i;
+        const cx = row.querySelector(".geo-cx"), cy = row.querySelector(".geo-cy");
+        const upd = () => { this.pushUndo(); r.verts[i] = { x: parseFloat(cx.value) || 0, y: parseFloat(cy.value) || 0 }; this.render(); this.renderRegionList(); this.renderValidation(); };
+        cx.addEventListener("change", upd); cy.addEventListener("change", upd);
+        row.querySelector(".geo-rowdel").addEventListener("click", () => { this.pushUndo(); r.verts.splice(i, 1); if (r.verts.length < 3 && r.verts.length >= 0) {} this.selVert = null; this.afterChange(); });
+      });
+    },
+
+    renderValidation() {
+      const host = $("geo_validation"); if (!host) return;
+      const rs = this.G().regions;
+      if (!rs.length) { host.innerHTML = ""; return; }
+      const v = Geometry.validate(this.G());
+      let html = v.ok
+        ? '<div class="big fos-good" style="font-size:15px">✓ Geometry valid</div>'
+        : '<div class="big fos-bad" style="font-size:15px">⚠ Geometry has issues</div>';
+      const lines = [];
+      for (const r of rs) {
+        const iss = v.regionIssues[r.id] || [];
+        if (iss.length) lines.push(`<b>${r.name}:</b> ${iss.join("; ")}`);
+      }
+      for (const [a, b] of v.overlaps) lines.push(`<b>Overlap:</b> “${geoNameById(rs, a)}” and “${geoNameById(rs, b)}” interiors overlap (heuristic check)`);
+      if (lines.length) html += '<div class="muted" style="margin-top:4px">' + lines.map(l => `<div>${l}</div>`).join("") + "</div>";
+      host.innerHTML = html;
+      function geoNameById(rs, id) { const r = rs.find(x => x.id === id); return r ? r.name : id; }
+    },
+
+    // ---- templates & integration ----
+    tplSlope() {
+      const sp = readSlope();
+      this.pushUndo();
+      const matId = $("geo_region_mat").value || sp.materialId || (project.materials[0] && project.materials[0].id);
+      const r = Geometry.slopeTemplate({ H: sp.H, beta: sp.beta, crest: sp.crest, toe: sp.toe, materialId: matId, name: "Slope body" });
+      this.G().regions.push(r); this.sel = r.id; this.view.fitted = false; this.onShow(); note("Slope template added");
+    },
+    tplExample() {
+      this.pushUndo();
+      const mats = project.materials.map(m => m.id);
+      const ex = Geometry.exampleTwoLayer(mats);
+      for (const r of ex.regions) this.G().regions.push(r);
+      this.sel = ex.regions[0].id; this.view.fitted = false; this.onShow(); note("Two-layer example added");
+    },
+    clearAll() {
+      if (!this.G().regions.length) return;
+      this.pushUndo(); this.G().regions = []; this.sel = null; this.selVert = null; this.draft = null; this.afterChange(); note("Geometry cleared");
+    },
+    delRegion() {
+      if (!this.sel) return;
+      this.pushUndo(); this.G().regions = this.G().regions.filter(r => r.id !== this.sel); this.sel = null; this.selVert = null; this.afterChange();
+    },
+    addRow() {
+      const r = this.sel && this.region(this.sel); if (!r) { note("Select a region first"); return; }
+      this.pushUndo();
+      const c = r.verts.length ? Geometry.centroid(r.verts) : { x: 0, y: 0 };
+      r.verts.push(this.snapPt({ x: c.x + 2, y: c.y }));
+      this.afterChange();
+    },
+    sendToSlope() {
+      const prof = Geometry.groundProfile(this.G());
+      if (prof.length < 2) { note("Draw a region first"); return; }
+      slopeCustomProfile = prof;
+      switchTo("slope"); runSlope(); note("Ground profile sent to Slope (" + prof.length + " points)");
+    },
+
+    toProject() { /* geometry edits mutate project.geometry in place already */ },
+    fromProject() { this.sel = null; this.selVert = null; this.draft = null; this.view.fitted = false; this.undoStack = []; this.redoStack = []; },
+
+    init() {
+      const cv = $("geom_canvas"); if (!cv) return;
+      cv.addEventListener("mousedown", e => this.onDown(e));
+      window.addEventListener("mousemove", e => { if (current === "geometry") this.onMove(e); });
+      window.addEventListener("mouseup", () => { if (current === "geometry") this.onUp(); });
+      cv.addEventListener("dblclick", e => this.onDblClick(e));
+      cv.addEventListener("wheel", e => this.onWheel(e), { passive: false });
+      document.querySelectorAll("#geo_tools .geo-tool").forEach(b => b.addEventListener("click", () => this.setTool(b.dataset.tool)));
+      $("geo_close").addEventListener("click", () => this.finishDraft());
+      $("geo_undo").addEventListener("click", () => this.undo());
+      $("geo_redo").addEventListener("click", () => this.redo());
+      $("geo_fit").addEventListener("click", () => { this.fit(); this.render(); });
+      $("geo_del_region").addEventListener("click", () => this.delRegion());
+      $("geo_add_row").addEventListener("click", () => this.addRow());
+      $("geo_tpl_slope").addEventListener("click", () => this.tplSlope());
+      $("geo_tpl_example").addEventListener("click", () => this.tplExample());
+      $("geo_clear").addEventListener("click", () => this.clearAll());
+      $("geo_send_slope").addEventListener("click", () => this.sendToSlope());
+      $("geo_region_mat").addEventListener("change", () => { const r = this.sel && this.region(this.sel); if (r) { this.pushUndo(); r.materialId = $("geo_region_mat").value; this.afterChange(); } });
+      ["geo_showgrid", "geo_gridspace", "geo_snap"].forEach(id => $(id).addEventListener("change", () => this.render()));
+    }
+  };
+  draw.geometry = () => geomEditor.render();
+
   // ---------------- Run buttons ----------------
-  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation, dynamics: runDynamics, thermal: runThermal, flow3d: runFlow3d, prob: runProb };
+  const RUN = { geometry: () => geomEditor.onShow(), slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation, dynamics: runDynamics, thermal: runThermal, flow3d: runFlow3d, prob: runProb };
   $("btn_compute").addEventListener("click", () => RUN[current]());
   $("btn_chat").addEventListener("click", () => document.body.classList.toggle("chat-hidden"));
   $("g_field").addEventListener("change", () => { if (last.sigma) draw.sigma(last.sigma); });
@@ -731,6 +1078,7 @@
     const compute = $("btn_compute");
     if (mod === "materials" || mod === "validation") { compute.disabled = true; compute.style.opacity = .4; }
     else { compute.disabled = false; compute.style.opacity = 1; setBadge(mod); }
+    if (mod === "geometry") geomEditor.onShow();
   }
   function syncSlopeRows() {
     if (!$("s_pp")) return;
@@ -804,6 +1152,10 @@
     for (const mod in DOM_MAP) { populateMatSelectors(); for (const k in DOM_MAP[mod]) writeField(DOM_MAP[mod][k], project.analyses[mod][k]); }
     $("tree_name").textContent = project.name || "Untitled project";
     renderMaterials(); populateMatSelectors(); syncSlopeRows();
+    slopeCustomProfile = null;
+    geomEditor.fromProject();
+    geomEditor.syncMatSelect(); geomEditor.renderRegionList(); geomEditor.renderTable(); geomEditor.renderValidation();
+    if (current === "geometry") geomEditor.onShow();
   }
   function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope(); runProb(); if (current !== "materials" && current !== "validation") switchTo(current); }
   function note(msg) { $("status_right").textContent = msg; }
@@ -961,6 +1313,8 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
     $("s_method").addEventListener("change", () => setBadge("slope"));
     $("s_pp").addEventListener("change", syncSlopeRows);
     $("s_search").addEventListener("change", syncSlopeRows);
+    ["s_H", "s_beta", "s_crest", "s_toe"].forEach(id => $(id).addEventListener("change", clearSlopeProfile));
+    geomEditor.init();
     syncSlopeRows();
     $("btn_new").addEventListener("click", doNew);
     $("btn_open").addEventListener("click", doOpen);
@@ -974,7 +1328,7 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
   }
 
   // ---------------- First run ----------------
-  window.addEventListener("resize", () => { if (last[current]) draw[current](last[current]); });
+  window.addEventListener("resize", () => { if (current === "geometry") geomEditor.render(); else if (last[current]) draw[current](last[current]); });
   setupProjectUI();
   runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope(); runProb();   // slope's status restored on switchTo below
   switchTo("slope");

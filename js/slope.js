@@ -51,6 +51,13 @@
   // Ground elevation at x by linear interpolation along the profile.
   function surfaceY(prof, x) { return interpPolyline(prof, x); }
 
+  // The ground profile to analyse: a custom polyline (e.g. from the geometry
+  // editor) when supplied, else the parametric slope profile.
+  function profileFor(p) {
+    if (p.profile && p.profile.length >= 2) return p.profile.map(v => ({ x: v.x, y: v.y }));
+    return groundProfile(p);
+  }
+
   // Piezometric elevation at x along a user piezometric line.
   function piezoY(line, x) { return interpPolyline(line, x); }
 
@@ -328,7 +335,7 @@
   // Entry-and-exit slip-surface search. entry/exit are {x0, x1, n}; nR radius
   // increments span each chord. Returns {best, trials, prof}.
   function entryExitSearch(p, opts) {
-    const prof = groundProfile(p);
+    const prof = profileFor(p);
     const method = p.method, nSlices = p.nslices;
     const e = opts.entry, x = opts.exit, nR = Math.max(3, opts.nR | 0 || 10);
     const ne = Math.max(2, e.n | 0 || 5), nx = Math.max(2, x.n | 0 || 5);
@@ -361,7 +368,7 @@
 
   // Grid search for the critical (minimum FoS) circle.
   function gridSearch(p) {
-    const prof = groundProfile(p);
+    const prof = profileFor(p);
     const toeX = prof[2].x;
     const method = p.method, nSlices = p.nslices, g = p.grid;
     const rankMethod = method === "spencer" ? "bishop" : method;
@@ -400,7 +407,7 @@
   // ---- Fixed-circle evaluation and analytical reference cases ----
 
   function foSForCircle(p, xc, yc, R, nSlices) {
-    const prof = groundProfile(p);
+    const prof = profileFor(p);
     const n = nSlices || p.nslices || 30;
     const fel = evalCircle(p, prof, xc, yc, R, "fellenius", n);
     const bis = evalCircle(p, prof, xc, yc, R, "bishop", n);
@@ -413,7 +420,7 @@
 
   // Spencer factor of safety and λ for one explicit circle (benchmarks/UI).
   function spencerForCircle(p, xc, yc, R, nSlices) {
-    const prof = groundProfile(p);
+    const prof = profileFor(p);
     const n = nSlices || p.nslices || 30;
     const built = buildSlices(p, prof, xc, yc, R, n);
     if (!built) return null;
@@ -423,7 +430,7 @@
   // Bishop FoS at a given F-independent check against Spencer's moment eq at
   // λ = 0 (they must coincide for a circular surface — a verification hook).
   function bishopForCircle(p, xc, yc, R, nSlices) {
-    const prof = groundProfile(p);
+    const prof = profileFor(p);
     const n = nSlices || p.nslices || 30;
     const built = buildSlices(p, prof, xc, yc, R, n);
     if (!built) return null;
