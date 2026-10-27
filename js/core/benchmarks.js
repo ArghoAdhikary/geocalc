@@ -243,13 +243,112 @@
         for (const s of r.slices) { const ref = Math.max(0, gw * (wt - s.baseY)); e = Math.max(e, Math.abs(s.u - ref)); }
         return { computed: e, reference: 0, error: e };
       }
+    },
+    {
+      id: "dynamic.sdof.free",
+      method: "dynamic.sdof",
+      title: "SDOF free vibration vs analytical damped response",
+      source: "Analytical damped single-degree-of-freedom free vibration",
+      tol: 0.01, metric: "max displacement error",
+      run(S) {
+        const D = S.Dynamics, wn = 2 * Math.PI, zeta = 0.05, m = 1, k = wn * wn, c = 2 * zeta * wn * m;
+        const dt = 0.005, n = Math.round(3 / dt), p = new Float64Array(n);
+        const r = D.sdofNewmark(m, c, k, p, dt, 1, 0);
+        let e = 0; for (let i = 0; i < n; i++) e = Math.max(e, Math.abs(r.x[i] - D.freeVibration(wn, zeta, 1, 0, i * dt)));
+        return { computed: e, reference: 0, error: e };
+      }
+    },
+    {
+      id: "dynamic.sdof.harmonic",
+      method: "dynamic.sdof",
+      title: "SDOF harmonic steady-state amplitude vs analytical",
+      source: "Analytical harmonic response amplitude |H(ω)|",
+      tol: 0.02, metric: "relative amplitude error",
+      run(S) {
+        const D = S.Dynamics, wn = 2 * Math.PI, zeta = 0.05, m = 1, k = wn * wn, c = 2 * zeta * wn * m;
+        const w = 0.7 * wn, p0 = 1, dt = 0.005, n = Math.round(20 / dt), p = new Float64Array(n);
+        for (let i = 0; i < n; i++) p[i] = p0 * Math.sin(w * i * dt);
+        const r = D.sdofNewmark(m, c, k, p, dt, 0, 0);
+        let amp = 0; for (let i = n - Math.round(5 / dt); i < n; i++) amp = Math.max(amp, Math.abs(r.x[i]));
+        const ref = D.harmonicAmplitude(wn, zeta, k, p0, w);
+        return { computed: amp, reference: ref, error: Math.abs(amp - ref) / Math.abs(ref) };
+      }
+    },
+    {
+      id: "dynamic.sdof.energy",
+      method: "dynamic.sdof",
+      title: "Undamped free vibration conserves energy",
+      source: "Energy behaviour, FR-QAK-008 (average-acceleration Newmark)",
+      tol: 0.001, metric: "max relative energy drift",
+      run(S) {
+        const D = S.Dynamics, wn = 2 * Math.PI, m = 1, k = wn * wn, c = 0;
+        const dt = 0.005, n = Math.round(5 / dt), p = new Float64Array(n);
+        const r = D.sdofNewmark(m, c, k, p, dt, 1, 0);
+        const E0 = 0.5 * r.v[0] * r.v[0] + 0.5 * k * r.x[0] * r.x[0];
+        let e = 0; for (let i = 0; i < n; i++) e = Math.max(e, Math.abs(0.5 * r.v[i] * r.v[i] + 0.5 * k * r.x[i] * r.x[i] - E0) / E0);
+        return { computed: e, reference: 0, error: e };
+      }
+    },
+    {
+      id: "dynamic.sdof.timestep",
+      method: "dynamic.sdof",
+      title: "Time-step refinement convergence",
+      source: "Time-step refinement, FR-QAK-008 / FR-VAL-008",
+      tol: 0.01, metric: "relative change dt → dt/2",
+      run(S) {
+        const D = S.Dynamics, wn = 2 * Math.PI, zeta = 0.03, m = 1, k = wn * wn, c = 2 * zeta * wn * m;
+        const xAt = (dt, tt) => { const n = Math.round(3 / dt); const p = new Float64Array(n); return D.sdofNewmark(m, c, k, p, dt, 1, 0).x[Math.round(tt / dt)]; };
+        const a = xAt(0.01, 2.0), b = xAt(0.005, 2.0);
+        return { computed: b, reference: a, error: Math.abs(a - b) / Math.max(Math.abs(b), 0.01) };
+      }
+    },
+    {
+      id: "dynamic.site1d.freq",
+      method: "dynamic.site1d",
+      title: "1D site response fundamental frequency f₁ = Vs/4H",
+      source: "Analytical SH-wave resonance of a uniform layer on rigid base",
+      tol: 0.02, metric: "relative frequency error",
+      run(S) {
+        const D = S.Dynamics, Vs = 200, H = 20, zeta = 0.05;
+        const r = D.sitePeakFrequency(Vs, H, zeta), ref = D.siteFundamental(Vs, H);
+        return { computed: r.peakFrequency, reference: ref, error: Math.abs(r.peakFrequency - ref) / ref };
+      }
+    },
+    {
+      id: "thermal.steady.slab",
+      method: "thermal.steady",
+      title: "Steady conduction slab vs linear profile and flux",
+      source: "Analytical 1D steady conduction (linear T, q = kΔT/L)",
+      tol: 1e-9, metric: "max profile/flux error",
+      run(S) {
+        const T = S.Thermal, k = 2, L = 1, T0 = 100, TL = 20, n = 50;
+        const r = T.steady1D(k, L, T0, TL, n);
+        let e = 0; for (let i = 0; i <= n; i++) e = Math.max(e, Math.abs(r.T[i] - (T0 + (TL - T0) * i / n)));
+        const fref = k * (T0 - TL) / L; e = Math.max(e, Math.abs(r.flux - fref) / Math.abs(fref));
+        return { computed: e, reference: 0, error: e };
+      }
+    },
+    {
+      id: "thermal.transient.series",
+      method: "thermal.transient",
+      title: "Transient conduction vs analytical series",
+      source: "Analytical 1D transient conduction series solution",
+      tol: 0.03, metric: "relative mid-slab temperature error",
+      run(S) {
+        const Th = S.Thermal, alpha = 1, L = 1, Ti = 100, Ts = 0, tEnd = 0.02;
+        const r = Th.transient1D({ alpha, L, Ti, Ts, n: 100, tEnd, dt: tEnd / 200 });
+        const iMid = Math.round(r.n / 2), x = iMid * r.dz;
+        const ref = Th.transientSeries(x, tEnd, L, Ti, Ts, alpha);
+        return { computed: r.tempAt(iMid), reference: ref, error: Math.abs(r.tempAt(iMid) - ref) / Math.max(Math.abs(ref), Math.abs(Ti - Ts)) };
+      }
     }
   ];
 
   function solvers() {
     return {
       Slope: global.Slope, Seep: global.Seep, FEFlow: global.FEFlow,
-      Consolidation: global.Consolidation, Unsat: global.Unsat, Geostatic: global.Geostatic
+      Consolidation: global.Consolidation, Unsat: global.Unsat, Geostatic: global.Geostatic,
+      Dynamics: global.Dynamics, Thermal: global.Thermal
     };
   }
 

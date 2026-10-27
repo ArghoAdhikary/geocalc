@@ -45,7 +45,9 @@
                wall_on: true, wall_x: 20, wall_d: 12 },
       sigma: { materialId: "mat_fill", W: 20, H: 10, nx: 18,
                q: 50, qw: 6, field: "uy" },
-      consolidation: { H: 4, cv: 1, u0: 100, drainage: "double", tEnd: 2, nz: 100 }
+      consolidation: { H: 4, cv: 1, u0: 100, drainage: "double", tEnd: 2, nz: 100 },
+      dynamics: { vs: 200, H: 20, zeta: 0.05 },
+      thermal: { L: 1, alpha: 1, Ti: 100, Ts: 0, tEnd: 0.02, n: 100 }
     };
   }
 
@@ -54,7 +56,7 @@
     return {
       schemaVersion: SCHEMA_VERSION,
       app: APP,
-      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "4.0.0",
+      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "5.0.0",
       name: name || "Untitled project",
       created: now,
       modified: now,

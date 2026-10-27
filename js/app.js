@@ -6,7 +6,7 @@
 
   // ---------------- Analysis switching (ribbon tabs + project tree) ----------------
   let current = "slope";
-  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", materials: "Materials library", validation: "Validation" };
+  const TITLE = { slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", materials: "Materials library", validation: "Validation" };
   const statusStore = {};
   function setStatus(mod, main, right) {
     statusStore[mod] = { main, right: right || "" };
@@ -344,8 +344,69 @@
     for (const U of [0, 0.25, 0.5, 0.75, 1]) { ctx.fillText((U * 100) + "%", pad - 8, sy(U) + 4); }
   };
 
+  // ---------------- DYNAMICS / SITE RESPONSE (Phase D) ----------------
+  function readDyn() { return { vs: num("d_vs"), H: num("d_H"), zeta: num("d_zeta") }; }
+  function runDynamics() {
+    const p = readDyn(), D = window.Dynamics;
+    const r = D.sitePeakFrequency(p.vs, p.H, p.zeta);
+    const curve = [], fmax = 4 * r.fundamental;
+    for (let i = 0; i <= 200; i++) { const f = fmax * i / 200; curve.push({ f, amp: D.siteAmplification(f, p.vs, p.H, p.zeta) }); }
+    last.dynamics = { p, curve, r };
+    $("d_result").innerHTML =
+      `<div class="big">${r.fundamental.toFixed(2)} <span class="muted" style="font-size:14px">Hz (f₁)</span></div>
+       <div class="muted">Fundamental frequency V<sub>s</sub>/4H</div>
+       <table><tr><td>Peak amplification</td><td>${r.peakAmplification.toFixed(1)}×</td></tr>
+       <tr><td>Natural period</td><td>${(1 / r.fundamental).toFixed(2)} s</td></tr></table>`;
+    setStatus("dynamics", `Site response — f₁ = ${r.fundamental.toFixed(2)} Hz`, `peak ${r.peakAmplification.toFixed(1)}×`);
+    disclaim("dynamics", "d_result");
+    draw.dynamics(last.dynamics);
+  }
+  draw.dynamics = ({ curve, r }) => {
+    const { ctx, w, h } = fitCanvas($("d_canvas")); ctx.clearRect(0, 0, w, h);
+    const pad = 54, fmax = Math.max(...curve.map(c => c.f)), ampMax = Math.max(...curve.map(c => c.amp)) * 1.1;
+    const sx = f => pad + (f / fmax) * (w - 2 * pad), sy = a => (h - pad) - (a / ampMax) * (h - 2 * pad);
+    ctx.strokeStyle = "#c9d3de"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, pad - 6); ctx.lineTo(pad, h - pad); ctx.lineTo(w - pad, h - pad); ctx.stroke();
+    ctx.strokeStyle = "#1f6fd0"; ctx.lineWidth = 2.5; ctx.beginPath();
+    curve.forEach((c, i) => i ? ctx.lineTo(sx(c.f), sy(c.amp)) : ctx.moveTo(sx(c.f), sy(c.amp))); ctx.stroke();
+    ctx.strokeStyle = "#e5604d"; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(sx(r.fundamental), pad - 6); ctx.lineTo(sx(r.fundamental), h - pad); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#5f6d80"; ctx.font = "12px -apple-system,sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("Site amplification |F| vs frequency — dashed: fundamental f₁ = Vs/4H", pad, pad - 18);
+    ctx.fillText("frequency (Hz)", w - pad - 80, h - pad + 24);
+  };
+
+  // ---------------- THERMAL (Phase D) ----------------
+  function readThermal() { return { L: num("t_L"), alpha: num("t_alpha"), Ti: num("t_Ti"), Ts: num("t_Ts"), tEnd: num("t_tEnd"), n: num("t_n") }; }
+  function runThermal() {
+    const p = readThermal(), Th = window.Thermal;
+    const r = Th.transient1D(p);
+    const analytic = []; for (let i = 0; i <= r.n; i++) analytic.push(Th.transientSeries(i * r.dz, p.tEnd, p.L, p.Ti, p.Ts, p.alpha));
+    last.thermal = { p, r, analytic };
+    const iMid = Math.round(r.n / 2);
+    $("t_result").innerHTML =
+      `<div class="big">${r.tempAt(iMid).toFixed(1)} <span class="muted" style="font-size:14px">°C mid-slab</span></div>
+       <div class="muted">at t = ${p.tEnd} days</div>
+       <table><tr><td>Analytical mid</td><td>${analytic[iMid].toFixed(1)} °C</td></tr>
+       <tr><td>Cells</td><td>${r.n}</td></tr></table>`;
+    setStatus("thermal", `Thermal — mid-slab ${r.tempAt(iMid).toFixed(1)} °C at t = ${p.tEnd} d`, `${r.n} cells`);
+    disclaim("thermal", "t_result");
+    draw.thermal(last.thermal);
+  }
+  draw.thermal = ({ p, r, analytic }) => {
+    const { ctx, w, h } = fitCanvas($("t_canvas")); ctx.clearRect(0, 0, w, h);
+    const pad = 54, Tmax = Math.max(p.Ti, p.Ts), Tmin = Math.min(p.Ti, p.Ts), span = (Tmax - Tmin) || 1;
+    const sx = x => pad + (x / p.L) * (w - 2 * pad), sy = T => (h - pad) - ((T - Tmin) / span) * (h - 2 * pad);
+    ctx.strokeStyle = "#c9d3de"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, pad - 6); ctx.lineTo(pad, h - pad); ctx.lineTo(w - pad, h - pad); ctx.stroke();
+    ctx.strokeStyle = "#1f6fd0"; ctx.lineWidth = 2.5; ctx.beginPath();
+    for (let i = 0; i <= r.n; i++) { const x = i * r.dz; i ? ctx.lineTo(sx(x), sy(analytic[i])) : ctx.moveTo(sx(x), sy(analytic[i])); } ctx.stroke();
+    ctx.fillStyle = "#e5604d"; const stp = Math.max(1, Math.round(r.n / 30));
+    for (let i = 0; i <= r.n; i += stp) { const x = i * r.dz; ctx.beginPath(); ctx.arc(sx(x), sy(r.tempAt(i)), 3, 0, 7); ctx.fill(); }
+    ctx.fillStyle = "#5f6d80"; ctx.font = "12px -apple-system,sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("Temperature profile — line: analytical series · dots: numeric solver", pad, pad - 18);
+    ctx.fillText("depth x (m)", w - pad - 70, h - pad + 24);
+  };
+
   // ---------------- Run buttons ----------------
-  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation };
+  const RUN = { slope: runSlope, seep: runSeep, sigma: runSigma, consolidation: runConsolidation, dynamics: runDynamics, thermal: runThermal };
   $("btn_compute").addEventListener("click", () => RUN[current]());
   $("btn_chat").addEventListener("click", () => document.body.classList.toggle("chat-hidden"));
   $("g_field").addEventListener("change", () => { if (last.sigma) draw.sigma(last.sigma); });
@@ -490,6 +551,8 @@
     if (mod === "seep") return ($("p_transient") && $("p_transient").checked) ? "seep.transient" : "seep.steady";
     if (mod === "sigma") return "sigma.elastic";
     if (mod === "consolidation") return "consolidation.terzaghi1d";
+    if (mod === "dynamics") return "dynamic.site1d";
+    if (mod === "thermal") return "thermal.transient";
     return null;
   }
   function setBadge(mod) {
@@ -566,7 +629,9 @@
     slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", ru: "s_ru", method: ["s_method", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt" },
     seep:  { materialId: ["p_mat", "str"], W: "p_W", D: "p_D", nx: "p_nx", hu: "p_hu", hd: "p_hd", k: "p_k", wall_on: ["p_wall_on", "bool"], wall_x: "p_wall_x", wall_d: "p_wall_d" },
     sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] },
-    consolidation: { H: "c_H", cv: "c_cv", u0: "c_u0", drainage: ["c_drain", "str"], tEnd: "c_tEnd", nz: "c_nz" }
+    consolidation: { H: "c_H", cv: "c_cv", u0: "c_u0", drainage: ["c_drain", "str"], tEnd: "c_tEnd", nz: "c_nz" },
+    dynamics: { vs: "d_vs", H: "d_H", zeta: "d_zeta" },
+    thermal: { L: "t_L", alpha: "t_alpha", Ti: "t_Ti", Ts: "t_Ts", tEnd: "t_tEnd", n: "t_n" }
   };
   function readField(spec) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el) return undefined; return t === "bool" ? el.checked : t === "str" ? el.value : parseFloat(el.value); }
   function writeField(spec, val) { const [id, t] = Array.isArray(spec) ? spec : [spec, "num"]; const el = $(id); if (!el || val == null) return; if (t === "bool") el.checked = !!val; else el.value = val; }
@@ -576,7 +641,7 @@
     $("tree_name").textContent = project.name || "Untitled project";
     renderMaterials(); populateMatSelectors(); syncSlopeRows();
   }
-  function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runSlope(); if (current !== "materials" && current !== "validation") switchTo(current); }
+  function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runSlope(); if (current !== "materials" && current !== "validation") switchTo(current); }
   function note(msg) { $("status_right").textContent = msg; }
 
   function pickFile() { return new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = ".gcp,application/json"; i.onchange = () => res(i.files[0] || null); i.click(); }); }
@@ -746,6 +811,6 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
   // ---------------- First run ----------------
   window.addEventListener("resize", () => { if (last[current]) draw[current](last[current]); });
   setupProjectUI();
-  runSeep(); runSigma(); runConsolidation(); runSlope();   // slope last so the status bar reflects the default view
+  runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runSlope();   // slope last so the status bar reflects the default view
   switchTo("slope");
 })();

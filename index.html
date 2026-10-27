@@ -46,6 +46,8 @@
       <li class="tnode child" data-tab="seep"><span class="ti">≈</span> Seepage</li>
       <li class="tnode child" data-tab="sigma"><span class="ti">◫</span> Stress–deformation</li>
       <li class="tnode child" data-tab="consolidation"><span class="ti">⬓</span> Consolidation</li>
+      <li class="tnode child" data-tab="dynamics"><span class="ti">∿</span> Dynamics / site response</li>
+      <li class="tnode child" data-tab="thermal"><span class="ti">∆</span> Thermal</li>
     </ul>
     <div class="tree-note">Phase B. <b>Verified</b> methods carry analytical benchmark evidence (see <i>Validation</i>) and apply only within their stated envelope; others are <b>demonstration</b> only. Independent review (AC-09) pending before release.</div>
   </nav>
@@ -198,6 +200,36 @@
       </fieldset>
       <div id="c_result" class="result"></div>
     </div>
+
+    <!-- DYNAMICS / SITE RESPONSE -->
+    <div id="props-dynamics" class="propset">
+      <div class="props-title">Dynamics <small>1D linear site response</small> <span id="badge-dynamics" class="badge"></span></div>
+      <fieldset>
+        <legend>Soil column</legend>
+        <label>Shear-wave velocity V<sub>s</sub> (m/s)<input id="d_vs" type="number" value="200" step="10"></label>
+        <label>Layer thickness H (m)<input id="d_H" type="number" value="20" step="1"></label>
+        <label>Damping ratio ζ<input id="d_zeta" type="number" value="0.05" step="0.01" min="0.01" max="0.4"></label>
+      </fieldset>
+      <div id="d_result" class="result"></div>
+    </div>
+
+    <!-- THERMAL -->
+    <div id="props-thermal" class="propset">
+      <div class="props-title">Thermal <small>1D conduction</small> <span id="badge-thermal" class="badge"></span></div>
+      <fieldset>
+        <legend>Slab &amp; properties</legend>
+        <label>Thickness L (m)<input id="t_L" type="number" value="1" step="0.1"></label>
+        <label>Thermal diffusivity α (m²/day)<input id="t_alpha" type="number" value="1" step="0.1"></label>
+        <label>Initial temperature T<sub>i</sub> (°C)<input id="t_Ti" type="number" value="100" step="5"></label>
+        <label>Face temperature T<sub>s</sub> (°C)<input id="t_Ts" type="number" value="0" step="5"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Time</legend>
+        <label>End time (days)<input id="t_tEnd" type="number" value="0.02" step="0.01"></label>
+        <label>Depth cells<input id="t_n" type="number" value="100" step="10" min="20" max="400"></label>
+      </fieldset>
+      <div id="t_result" class="result"></div>
+    </div>
   </aside>
 
   <!-- Viewport -->
@@ -209,6 +241,8 @@
       <div id="vp-seep" class="vp"><canvas id="p_canvas"></canvas></div>
       <div id="vp-sigma" class="vp"><canvas id="g_canvas"></canvas></div>
       <div id="vp-consolidation" class="vp"><canvas id="c_canvas"></canvas></div>
+      <div id="vp-dynamics" class="vp"><canvas id="d_canvas"></canvas></div>
+      <div id="vp-thermal" class="vp"><canvas id="t_canvas"></canvas></div>
     </div>
     <div class="statusbar">
       <span id="status_main">Ready</span>
@@ -269,7 +303,7 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "4.0.0";</script>
+<script>window.GC_VERSION = "5.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>
@@ -281,6 +315,8 @@
 <script src="js/consolidation.js"></script>
 <script src="js/unsat.js"></script>
 <script src="js/geostatic.js"></script>
+<script src="js/dynamics.js"></script>
+<script src="js/thermal.js"></script>
 <script src="js/core/benchmarks.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/app.js"></script>

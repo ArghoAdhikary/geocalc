@@ -128,16 +128,42 @@
       notes: "Couples a phreatic surface into slope stability; verified against the hydrostatic pressure distribution."
     },
     {
-      id: "dynamic.response", module: "dynamic", method: "Equivalent-linear / dynamic response",
-      dimension: "2D", maturity: "conceptual", phase: "D", priority: "P0",
-      references: ["Equivalent-linear site response"],
-      notes: "Planned."
+      id: "dynamic.sdof", module: "dynamic", method: "SDOF dynamic response (Newmark)",
+      dimension: "1D", maturity: "verified", phase: "D", priority: "P0",
+      references: ["Newmark-β average acceleration; linear SDOF theory"],
+      evidence: ["benchmark:dynamic.sdof.free", "benchmark:dynamic.sdof.harmonic", "benchmark:dynamic.sdof.energy", "benchmark:dynamic.sdof.timestep"],
+      envelope: "Linear single-degree-of-freedom oscillator and response-spectrum computation; verified for free vibration, harmonic steady state, energy and time-step refinement.",
+      notes: "Oscillator and response-spectrum core (FR-QAK-008). Full 2D dynamic FE response is a later increment."
     },
     {
-      id: "thermal.conduction", module: "thermal", method: "Heat transport",
-      dimension: "2D", maturity: "conceptual", phase: "D", priority: "P1",
-      references: ["Conduction/advection heat equation"],
-      notes: "Planned."
+      id: "dynamic.site1d", module: "dynamic", method: "1D linear site response",
+      dimension: "1D", maturity: "verified", phase: "D", priority: "P0",
+      references: ["SH-wave resonance of a uniform viscoelastic layer on rigid base"],
+      evidence: ["benchmark:dynamic.site1d.freq"],
+      envelope: "Uniform layer on a rigid base; fundamental frequency f₁ = Vs/4H verified. Layered/nonlinear site response is a later increment.",
+      notes: "1D amplification and fundamental frequency."
+    },
+    {
+      id: "dynamic.response", module: "dynamic", method: "2D dynamic FE / equivalent-linear",
+      dimension: "2D", maturity: "conceptual", phase: "D", priority: "P0",
+      references: ["Equivalent-linear site response; dynamic FE"],
+      notes: "Planned (2D dynamic finite-element and nonlinear site response)."
+    },
+    {
+      id: "thermal.steady", module: "thermal", method: "Steady heat conduction",
+      dimension: "1D", maturity: "verified", phase: "D", priority: "P1",
+      references: ["Fourier conduction; analytical 1D steady profile"],
+      evidence: ["benchmark:thermal.steady.slab"],
+      envelope: "1D steady conduction with prescribed end temperatures; linear profile and flux q = kΔT/L verified.",
+      notes: "Steady conduction (FR-THM-001)."
+    },
+    {
+      id: "thermal.transient", module: "thermal", method: "Transient heat conduction",
+      dimension: "1D", maturity: "verified", phase: "D", priority: "P1",
+      references: ["Heat diffusion; implicit backward Euler; analytical series"],
+      evidence: ["benchmark:thermal.transient.series"],
+      envelope: "1D transient conduction, uniform diffusivity, fixed-face slab; verified against the analytical series.",
+      notes: "Transient conduction. Convection, sources, phase change and 2D are later increments."
     },
     {
       id: "model3d", module: "model3d", method: "Three-dimensional modeling",
