@@ -61,11 +61,26 @@
   // Piezometric elevation at x along a user piezometric line.
   function piezoY(line, x) { return interpPolyline(line, x); }
 
+  // Internal water-table elevation at x (for buoyant/saturated slice weights).
+  // Returns null when no internal water surface is defined (rᵤ mode).
+  function internalWaterY(p, x) {
+    if (p.porePressureMode === "watertable") return p.wt != null ? p.wt : null;
+    if (p.porePressureMode === "drawdown") return p.wtHigh != null ? p.wtHigh : null;
+    if (p.porePressureMode === "piezometric" && p.piezo && p.piezo.length >= 2) return piezoY(p.piezo, x);
+    return null;
+  }
+
   // Pore pressure at a slice base, by the selected model.
   function poreU(p, baseX, baseY, h, gamma, ru) {
     const gw = p.gammaW || 9.81;
     if (p.porePressureMode === "watertable") {
       return Math.max(0, gw * ((p.wt != null ? p.wt : 0) - baseY));
+    }
+    if (p.porePressureMode === "drawdown") {
+      // Rapid (undrained) drawdown: internal pore pressures are retained at the
+      // pre-drawdown high level wtHigh — no dissipation (Duncan & Wright, lower
+      // bound). The external pool may have dropped (handled via slice loading).
+      return Math.max(0, gw * ((p.wtHigh != null ? p.wtHigh : 0) - baseY));
     }
     if (p.porePressureMode === "piezometric" && p.piezo && p.piezo.length >= 2) {
       return Math.max(0, gw * (piezoY(p.piezo, baseX) - baseY));
@@ -109,8 +124,37 @@
       // Profile descends to the right, so the driving sense is +x toward the
       // toe; negate dx so Σ(W·sinα) is positive for the real failure direction.
       const alpha = Math.asin(-dx / R);
-      const W = gamma * h * b;
-      const u = poreU(p, xm, baseY, h, gamma, ru);
+      const gw = p.gammaW || 9.81;
+      let W, u;
+      if (p.porePressureMode === "drawdown") {
+        // Rigorous effective-stress drawdown decomposition (exact for hydrostatic
+        // external water): below the external pool Lext the soil's driving weight
+        // is BUOYANT (the external water carries its hydrostatic part); between
+        // Lext and the retained internal level Hint it is fully SATURATED (no
+        // external support); above Hint it is moist. The base pore pressure is the
+        // EXCESS head over the external-equivalent datum. With Hint = Lext this
+        // reduces to the ordinary submerged steady case (buoyant, u = 0).
+        const Lext = p.poolExt != null ? p.poolExt : (p.wtHigh || 0);
+        const Hint = p.wtHigh != null ? p.wtHigh : 0;
+        const gsat = p.gammaSat || gamma, gbuoy = gsat - gw;
+        const hBelowL = Math.max(0, Math.min(topY, Lext) - baseY);
+        const hMid = Math.max(0, Math.min(topY, Hint) - Math.max(baseY, Lext));
+        const hAbove = Math.max(0, topY - Math.max(baseY, Hint));
+        W = (gbuoy * hBelowL + gsat * hMid + gamma * hAbove) * b;
+        u = baseY <= Lext ? gw * Math.max(0, Hint - Lext) : Math.max(0, gw * (Hint - baseY));
+      } else {
+        // Non-drawdown: total weight (γ_sat below an internal water surface when
+        // given), with pore pressure by the selected model. No external pool.
+        const wY = internalWaterY(p, xm);
+        if (wY != null && p.gammaSat) {
+          const belowH = Math.max(0, Math.min(topY, wY) - baseY);
+          const aboveH = Math.max(0, topY - Math.max(baseY, wY));
+          W = (gamma * aboveH + p.gammaSat * belowH) * b;
+        } else {
+          W = gamma * h * b;
+        }
+        u = poreU(p, xm, baseY, h, gamma, ru);
+      }
       const dl = b / Math.cos(alpha);
       slices.push({ xm, baseY, topY, h, alpha, W, u, dl, b });
     }
@@ -404,6 +448,34 @@
     return gridSearch(p);
   }
 
+  // Rapid-drawdown study. The reservoir/pool drops from hw0 through each level
+  // in `levels`. For each external pool level L it returns:
+  //  - fosUndrained: the rapid (undrained) condition — internal pore pressures
+  //    retained at hw0, external water only up to L (the critical case);
+  //  - fosSteady: the long-term drained condition — internal water table at L.
+  // This is the signature "factor of safety vs drawdown level" curve. Effective
+  // stress, circular surface, single material; the external pool is modelled as
+  // a ponded-water surcharge (no explicit face thrust) — see the capability note.
+  function rapidDrawdownSweep(p, opts) {
+    const hw0 = opts.hw0, levels = opts.levels || [];
+    const out = [];
+    for (const L of levels) {
+      // Undrained: internal pore pressures retained at hw0; external pool at L.
+      const pu = Object.assign({}, p, { porePressureMode: "drawdown", wtHigh: hw0, poolExt: L });
+      // Long-term drained at L: internal and external water both at L (submerged
+      // steady — buoyant weights, no excess pore pressure).
+      const ps = Object.assign({}, p, { porePressureMode: "drawdown", wtHigh: L, poolExt: L });
+      const ru = analyze(pu), rs = analyze(ps);
+      out.push({
+        level: L,
+        drawdown: hw0 - L,
+        fosUndrained: ru.best ? ru.best.fos : null,
+        fosSteady: rs.best ? rs.best.fos : null
+      });
+    }
+    return out;
+  }
+
   // ---- Fixed-circle evaluation and analytical reference cases ----
 
   function foSForCircle(p, xc, yc, R, nSlices) {
@@ -464,7 +536,7 @@
   global.Slope = {
     analyze, groundProfile, surfaceY, piezoY,
     foSForCircle, spencerForCircle, bishopForCircle,
-    entryExitSearch, circleThrough,
+    entryExitSearch, circleThrough, rapidDrawdownSweep,
     planarFellenius, infiniteSlopeClosedForm
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -466,6 +466,32 @@
       }
     },
     {
+      id: "slope.drawdown.undrained_le_steady",
+      method: "slope.drawdown",
+      title: "Rapid (undrained) drawdown FoS ≤ long-term drained FoS at the same pool level",
+      source: "Retained (undrained) pore pressures are higher than the dissipated steady state, so the factor of safety can only be lower or equal",
+      tol: 0, metric: "max(F_undrained − F_steady) over drawdown levels ≤ 0",
+      run(S) {
+        const p = { H: 10, beta: 26, crest: 10, toe: 16, gamma: 19, gammaSat: 20.5, c: 15, phi: 30, ru: 0, nslices: 30, grid: 14, method: "bishop", gammaW: 9.81 };
+        const sw = S.Slope.rapidDrawdownSweep(p, { hw0: 9, levels: [9, 8, 7, 5, 3, 1] });
+        let worst = -Infinity;
+        for (const r of sw) if (r.fosUndrained != null && r.fosSteady != null) worst = Math.max(worst, r.fosUndrained - r.fosSteady);
+        return { computed: worst, reference: 0, error: worst > 1e-6 ? worst : 0 };
+      }
+    },
+    {
+      id: "slope.drawdown.nodrawdown_equal",
+      method: "slope.drawdown",
+      title: "With no drawdown (pool at the pre-drawdown level) undrained equals drained",
+      source: "At zero drawdown there is no retained excess pore pressure, so the two conditions coincide",
+      tol: 1e-9, metric: "|F_undrained − F_steady| at zero drawdown",
+      run(S) {
+        const p = { H: 10, beta: 26, crest: 10, toe: 16, gamma: 19, gammaSat: 20.5, c: 15, phi: 30, ru: 0, nslices: 30, grid: 14, method: "bishop", gammaW: 9.81 };
+        const sw = S.Slope.rapidDrawdownSweep(p, { hw0: 9, levels: [9] });
+        return { computed: sw[0].fosUndrained, reference: sw[0].fosSteady, error: Math.abs(sw[0].fosUndrained - sw[0].fosSteady) };
+      }
+    },
+    {
       id: "slope.entryexit.consistency",
       method: "slope.entryexit",
       title: "Entry-and-exit search converges to the grid-search critical FoS",

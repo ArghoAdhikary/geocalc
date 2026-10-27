@@ -72,6 +72,14 @@
       notes: "Generates trial circles through user entry/exit ranges. Verified to converge to the same critical factor of safety as the independent grid search within tolerance."
     },
     {
+      id: "slope.drawdown", module: "slope", method: "Rapid drawdown (effective-stress)",
+      dimension: "2D", maturity: "verified", phase: "L", priority: "P0",
+      references: ["Duncan, Wright & Wong (1990)", "Duncan, Wright & Brandon, Soil Strength and Slope Stability (2014)"],
+      evidence: ["benchmark:slope.drawdown.undrained_le_steady", "benchmark:slope.drawdown.nodrawdown_equal"],
+      envelope: "Effective-stress, circular surface, single material. Pool drawn from a high level; external water as hydrostatic buoyancy (no explicit face thrust); the undrained condition RETAINS the full pre-drawdown pore pressure (no dissipation) — a conservative lower bound. Where retained excess head exceeds the buoyant overburden the analysis predicts flotation/shallow instability and the limit-equilibrium FoS there is only indicative.",
+      notes: "Rapid-drawdown study: before (full pool), long-term drained, and the critical undrained condition across a sweep of pool levels (FoS vs drawdown). Verified: undrained ≤ drained at every level, and equality at zero drawdown. Not the staged Duncan 3-stage procedure; independent review pending before release."
+    },
+    {
       id: "groundwater.piezometric", module: "slope", method: "Piezometric-line pore pressure",
       dimension: "2D", maturity: "verified", phase: "G", priority: "P0",
       references: ["Hydrostatic pore pressure below a piezometric surface"],

@@ -72,6 +72,9 @@
       nR: num("s_enr"),
       porePressureMode: $("s_pp").value, wt: num("s_wt"),
       piezo: parsePiezo($("s_piezo").value), gammaW: 9.81,
+      gammaSat: num("s_gammaSat"),
+      wtHigh: num("s_wtHigh"), wtLow: num("s_wtLow"), ddSteps: num("s_ddSteps"),
+      poolExt: $("s_pp").value === "drawdown" ? num("s_wtLow") : null,
       profile: (slopeCustomProfile && slopeCustomProfile.length >= 2) ? slopeCustomProfile : null
     };
   }
@@ -143,6 +146,69 @@
       <text x="${W - pr - 2}" y="${pt + 20}" font-size="8" text-anchor="end" fill="#1f6fd0">force</text>
     </svg>`;
   }
+
+  // ---- Rapid-drawdown study ----
+  let lastDrawdown = null;
+  function runDrawdownStudy() {
+    const p = readSlope();
+    const hw0 = p.wtHigh, low = p.wtLow, steps = Math.max(3, p.ddSteps | 0 || 12);
+    const levels = [];
+    for (let i = 0; i <= steps; i++) levels.push(+(hw0 - (hw0 - low) * i / steps).toFixed(3));
+    const sweep = window.Slope.rapidDrawdownSweep(p, { hw0, levels });
+    lastDrawdown = { p, hw0, sweep };
+    const valid = sweep.filter(r => r.fosUndrained != null);
+    const before = sweep[0];
+    const after = sweep[sweep.length - 1];
+    const crit = valid.reduce((a, b) => (b.fosUndrained < a.fosUndrained ? b : a), valid[0]);
+    const conv = $("s_conv");
+    const r = $("s_result");
+    const fmt = v => v == null ? "—" : v.toFixed(3);
+    r.innerHTML =
+      `<div class="muted" style="font-weight:700;margin-bottom:4px">Rapid drawdown study</div>
+       <table>
+        <tr><td>Before (full pool, drained)</td><td>FoS = ${fmt(before.fosSteady)}</td></tr>
+        <tr><td>Critical undrained</td><td class="${crit.fosUndrained < 1 ? "fos-bad" : crit.fosUndrained < 1.3 ? "fos-warn" : "fos-good"}">FoS = ${fmt(crit.fosUndrained)} @ ${crit.drawdown.toFixed(2)} m drawdown</td></tr>
+        <tr><td>Fully drawn down (undrained)</td><td>FoS = ${fmt(after.fosUndrained)}</td></tr>
+       </table>`;
+    disclaim("slope", "s_result");
+    conv.style.display = "";
+    conv.innerHTML = `<div class="muted" style="margin-bottom:4px">Factor of safety vs drawdown depth (undrained = conservative)</div>` + drawdownSVG(sweep, hw0);
+    setStatus("slope", `Rapid drawdown — critical undrained FoS = ${fmt(crit.fosUndrained)} at ${crit.drawdown} m`, "Rapid drawdown");
+    note("Drawdown study: " + valid.length + " levels");
+  }
+  function drawdownSVG(sweep, hw0) {
+    const W = 280, H = 160, pl = 40, pb = 26, pt = 8, pr = 10;
+    const pts = sweep.filter(r => r.fosUndrained != null || r.fosSteady != null);
+    const xs = pts.map(r => r.drawdown);
+    const ys = pts.flatMap(r => [r.fosUndrained, r.fosSteady].filter(v => v != null));
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    let y0 = 0, y1 = Math.max(1.6, Math.max(...ys) * 1.05);
+    const sx = v => pl + (v - x0) / (x1 - x0 || 1) * (W - pl - pr);
+    const sy = v => (H - pb) - (Math.min(v, y1) - y0) / (y1 - y0 || 1) * (H - pt - pb);
+    const path = key => pts.filter(r => r[key] != null).map((r, i) => (i ? "L" : "M") + sx(r.drawdown).toFixed(1) + "," + sy(r[key]).toFixed(1)).join(" ");
+    const one = (y1 >= 1) ? `<line x1="${pl}" y1="${sy(1).toFixed(1)}" x2="${W - pr}" y2="${sy(1).toFixed(1)}" stroke="#e5604d" stroke-dasharray="3 3"/><text x="${pl + 2}" y="${(sy(1) - 2).toFixed(1)}" font-size="8" fill="#e5604d">FoS = 1</text>` : "";
+    const ticksY = [y0, y1 / 2, y1].map(v => `<text x="2" y="${(sy(v) + 3).toFixed(1)}" font-size="8" fill="var(--muted,#789)">${v.toFixed(1)}</text>`).join("");
+    const ticksX = [x0, (x0 + x1) / 2, x1].map(v => `<text x="${sx(v).toFixed(1)}" y="${H - 6}" font-size="8" text-anchor="middle" fill="var(--muted,#789)">${v.toFixed(1)}</text>`).join("");
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:320px">
+      <rect x="${pl}" y="${pt}" width="${W - pl - pr}" height="${H - pt - pb}" fill="none" stroke="var(--border,#345)"/>
+      ${one}
+      <path d="${path('fosSteady')}" fill="none" stroke="#1f8f5a" stroke-width="1.6"/>
+      <path d="${path('fosUndrained')}" fill="none" stroke="#1f6fd0" stroke-width="1.8"/>
+      ${ticksY}${ticksX}
+      <text x="${(pl + W - pr) / 2}" y="${H - 1}" font-size="8" text-anchor="middle" fill="var(--muted,#789)">drawdown (m)</text>
+      <text x="${W - pr - 2}" y="${pt + 10}" font-size="8" text-anchor="end" fill="#1f6fd0">undrained</text>
+      <text x="${W - pr - 2}" y="${pt + 20}" font-size="8" text-anchor="end" fill="#1f8f5a">drained</text>
+    </svg>`;
+  }
+  function exportDrawdownCSV() {
+    if (!lastDrawdown) { note("Run the drawdown study first"); return; }
+    const rows = [["pool_level_m", "drawdown_m", "FoS_undrained", "FoS_drained_steady"]];
+    for (const r of lastDrawdown.sweep) rows.push([r.level, r.drawdown, r.fosUndrained == null ? "" : r.fosUndrained.toFixed(5), r.fosSteady == null ? "" : r.fosSteady.toFixed(5)]);
+    const csv = rows.map(r => r.join(",")).join("\n");
+    downloadFile((project.name || "slope") + "-drawdown.csv", csv, "text/csv");
+    note("Drawdown curve exported (CSV)");
+  }
+
   draw.slope = ({ p, out }) => {
     const { ctx, w, h } = fitCanvas($("s_canvas"));
     ctx.clearRect(0, 0, w, h);
@@ -1063,7 +1129,7 @@
   let currentPath = null;
 
   function methodIdFor(mod) {
-    if (mod === "slope") { const m = $("s_method").value; return m === "fellenius" ? "slope.fellenius" : m === "spencer" ? "slope.spencer" : "slope.bishop"; }
+    if (mod === "slope") { if ($("s_pp").value === "drawdown") return "slope.drawdown"; const m = $("s_method").value; return m === "fellenius" ? "slope.fellenius" : m === "spencer" ? "slope.spencer" : "slope.bishop"; }
     if (mod === "seep") return ($("p_transient") && $("p_transient").checked) ? "seep.transient" : "seep.steady";
     if (mod === "sigma") return "sigma.elastic";
     if (mod === "consolidation") return "consolidation.terzaghi1d";
@@ -1100,6 +1166,7 @@
     $("s_ru_row").style.display = mode === "ru" ? "flex" : "none";
     $("s_wt_row").style.display = mode === "watertable" ? "flex" : "none";
     $("s_piezo_row").style.display = mode === "piezometric" ? "flex" : "none";
+    if ($("s_dd_rows")) $("s_dd_rows").style.display = mode === "drawdown" ? "block" : "none";
     const ee = $("s_search") && $("s_search").value === "entryexit";
     if ($("s_ee_rows")) $("s_ee_rows").style.display = ee ? "block" : "none";
     if ($("s_grid_row")) $("s_grid_row").style.display = ee ? "none" : "flex";
@@ -1295,7 +1362,7 @@
 
   // ---- Project <-> DOM sync and file operations ----
   const DOM_MAP = {
-    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", gamma: "s_gamma", c: "s_c", phi: "s_phi", ru: "s_ru", method: ["s_method", "str"], search: ["s_search", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt", piezoText: ["s_piezo", "str"], e0: "s_e0", e1: "s_e1", x0: "s_x0", x1: "s_x1", een: "s_een", enr: "s_enr" },
+    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", gamma: "s_gamma", c: "s_c", phi: "s_phi", ru: "s_ru", method: ["s_method", "str"], search: ["s_search", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt", piezoText: ["s_piezo", "str"], e0: "s_e0", e1: "s_e1", x0: "s_x0", x1: "s_x1", een: "s_een", enr: "s_enr", gammaSat: "s_gammaSat", wtHigh: "s_wtHigh", wtLow: "s_wtLow", ddSteps: "s_ddSteps" },
     seep:  { materialId: ["p_mat", "str"], W: "p_W", D: "p_D", nx: "p_nx", hu: "p_hu", hd: "p_hd", k: "p_k", wall_on: ["p_wall_on", "bool"], wall_x: "p_wall_x", wall_d: "p_wall_d" },
     sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] },
     consolidation: { H: "c_H", cv: "c_cv", u0: "c_u0", drainage: ["c_drain", "str"], tEnd: "c_tEnd", nz: "c_nz" },
@@ -1518,6 +1585,8 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
     $("s_method").addEventListener("change", () => setBadge("slope"));
     $("s_pp").addEventListener("change", syncSlopeRows);
     $("s_search").addEventListener("change", syncSlopeRows);
+    $("s_dd_run").addEventListener("click", runDrawdownStudy);
+    $("s_dd_csv").addEventListener("click", exportDrawdownCSV);
     ["s_H", "s_beta", "s_crest", "s_toe"].forEach(id => $(id).addEventListener("change", clearSlopeProfile));
     geomEditor.init();
     syncSlopeRows();

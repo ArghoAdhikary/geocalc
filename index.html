@@ -178,6 +178,7 @@
             <option value="ru">rᵤ coefficient</option>
             <option value="watertable">Water table (phreatic transfer)</option>
             <option value="piezometric">Piezometric line</option>
+            <option value="drawdown">Rapid drawdown</option>
           </select>
         </label>
         <label id="s_ru_row">Pore pressure ratio r<sub>u</sub><input id="s_ru" type="number" value="0.25" step="0.05" min="0" max="0.7"></label>
@@ -187,6 +188,15 @@
 20, 7
 40, 7</textarea>
         </label>
+        <div id="s_dd_rows" style="display:none">
+          <label>Saturated unit weight γ<sub>sat</sub> (kN/m³)<input id="s_gammaSat" type="number" value="20.5" step="0.5"></label>
+          <label>Pre-drawdown (high) pool elevation (m)<input id="s_wtHigh" type="number" value="9" step="0.5"></label>
+          <label>Final (drawn-down) pool elevation (m)<input id="s_wtLow" type="number" value="0" step="0.5"></label>
+          <label>Drawdown steps<input id="s_ddSteps" type="number" value="12" step="1" min="3" max="40"></label>
+          <button id="s_dd_run" class="minor" type="button">Run drawdown study</button>
+          <button id="s_dd_csv" class="minor" type="button">Export curve (CSV)</button>
+          <span class="note">Undrained (no-dissipation) = conservative lower bound; external water as hydrostatic buoyancy; circular, single material. FoS below 1 beyond a drawdown threshold indicates predicted instability.</span>
+        </div>
         <span class="note">Water table / piezometric line apply u = γ<sub>w</sub>·(water elevation − base). A saved scenario, not a solved seepage field; no suction above the line.</span>
       </fieldset>
       <fieldset>
@@ -496,7 +506,7 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "10.0.0";</script>
+<script>window.GC_VERSION = "11.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>
