@@ -54,34 +54,91 @@
   const draw = {};   // draw function per module
 
   // ---------------- SLOPE ----------------
+  function parsePiezo(text) {
+    return (text || "").split(/\n+/).map(line => {
+      const m = line.split(/[,\s]+/).map(Number).filter(v => !Number.isNaN(v));
+      return m.length >= 2 ? { x: m[0], y: m[1] } : null;
+    }).filter(Boolean).sort((a, b) => a.x - b.x);
+  }
   function readSlope() {
     return {
       H: num("s_H"), beta: num("s_beta"), crest: num("s_crest"), toe: num("s_toe"),
       gamma: num("s_gamma"), c: num("s_c"), phi: num("s_phi"), ru: num("s_ru"),
       method: $("s_method").value, nslices: num("s_nslices"), grid: num("s_grid"),
-      porePressureMode: $("s_pp").value, wt: num("s_wt"), gammaW: 9.81
+      search: $("s_search").value,
+      entry: { x0: num("s_e0"), x1: num("s_e1"), n: num("s_een") },
+      exit: { x0: num("s_x0"), x1: num("s_x1"), n: num("s_een") },
+      nR: num("s_enr"),
+      porePressureMode: $("s_pp").value, wt: num("s_wt"),
+      piezo: parsePiezo($("s_piezo").value), gammaW: 9.81
     };
+  }
+  const SLOPE_METHOD_LABEL = { bishop: "Bishop simplified", fellenius: "Fellenius (ordinary)", spencer: "Spencer" };
+  function slopeMethodLabel(p) {
+    const base = SLOPE_METHOD_LABEL[p.method] || p.method;
+    return p.search === "entryexit" ? base + " · entry-and-exit" : base;
   }
   function runSlope() {
     const p = readSlope();
     const out = window.Slope.analyze(p);
     last.slope = { p, out };
-    const r = $("s_result");
-    if (!out.best) { r.innerHTML = '<span class="muted">No valid slip surface found — adjust geometry.</span>'; setStatus("slope", "Slope stability — no valid slip surface"); draw.slope(last.slope); return; }
-    const fos = out.best.fos;
+    const r = $("s_result"), conv = $("s_conv");
+    if (!out.best) {
+      r.innerHTML = '<span class="muted">No valid slip surface found — adjust geometry or search ranges.</span>';
+      conv.style.display = "none";
+      setStatus("slope", "Slope stability — no valid slip surface"); draw.slope(last.slope); return;
+    }
+    const b = out.best, fos = b.fos;
     const cls = fos >= 1.5 ? "fos-good" : fos >= 1.2 ? "fos-warn" : "fos-bad";
     const verdict = fos >= 1.5 ? "Stable" : fos >= 1.2 ? "Marginal" : "Unsafe";
-    setStatus("slope", `Slope stability — FoS = ${fos.toFixed(3)} (${verdict})`, p.method === "bishop" ? "Bishop simplified" : "Fellenius");
+    const label = slopeMethodLabel(p);
+    setStatus("slope", `Slope stability — FoS = ${fos.toFixed(3)} (${verdict})`, label);
+    let extra = "";
+    if (p.method === "spencer" && b.lambda != null) {
+      extra = `<tr><td>Interslice λ*</td><td>${b.lambda.toFixed(3)}${b.crossed === false ? " (closest)" : ""}</td></tr>
+               <tr><td>F (moment / force)</td><td>${b.fm.toFixed(3)} / ${b.ff.toFixed(3)}</td></tr>`;
+    }
     r.innerHTML =
       `<div class="big ${cls}">FoS = ${fos.toFixed(3)}</div>
-       <div class="muted">${verdict} · ${p.method === "bishop" ? "Bishop simplified" : "Fellenius"} · critical circle</div>
+       <div class="muted">${verdict} · ${label} · critical circle</div>
        <table>
-        <tr><td>Centre</td><td>(${out.best.xc.toFixed(1)}, ${out.best.yc.toFixed(1)}) m</td></tr>
-        <tr><td>Radius</td><td>${out.best.R.toFixed(1)} m</td></tr>
-        <tr><td>Slices used</td><td>${out.best.slices.length}</td></tr>
+        <tr><td>Centre</td><td>(${b.xc.toFixed(1)}, ${b.yc.toFixed(1)}) m</td></tr>
+        <tr><td>Radius</td><td>${b.R.toFixed(1)} m</td></tr>
+        <tr><td>Slices used</td><td>${b.slices.length}</td></tr>
+        ${extra}
        </table>`;
     disclaim("slope", "s_result");
+    // Spencer convergence plot (moment vs force factor of safety against λ).
+    if (p.method === "spencer" && b.curve && b.curve.length > 1) {
+      conv.style.display = "";
+      conv.innerHTML = `<div class="muted" style="margin-bottom:4px">Convergence — factor of safety vs interslice-force ratio λ</div>` + convergenceSVG(b.curve, b.lambda, b.fos);
+    } else { conv.style.display = "none"; }
     draw.slope(last.slope);
+  }
+  // Inline SVG of the Spencer F_m and F_f curves vs λ, with the solution marked.
+  function convergenceSVG(curve, lamStar, fStar) {
+    const W = 260, H = 150, pl = 36, pb = 22, pt = 8, pr = 8;
+    const xs = curve.map(c => c.lambda);
+    const ys = curve.map(c => c.fm).concat(curve.map(c => c.ff));
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    let y0 = Math.min(...ys), y1 = Math.max(...ys); const pad = (y1 - y0) * 0.1 || 0.1; y0 -= pad; y1 += pad;
+    const sx = v => pl + (v - x0) / (x1 - x0 || 1) * (W - pl - pr);
+    const sy = v => (H - pb) - (v - y0) / (y1 - y0 || 1) * (H - pt - pb);
+    const path = key => curve.map((c, i) => (i ? "L" : "M") + sx(c.lambda).toFixed(1) + "," + sy(c[key]).toFixed(1)).join(" ");
+    const ticksY = [y0, (y0 + y1) / 2, y1].map(v => `<text x="2" y="${(sy(v) + 3).toFixed(1)}" font-size="8" fill="var(--muted,#789)">${v.toFixed(2)}</text>`).join("");
+    const zeroX = (x0 <= 0 && x1 >= 0) ? `<line x1="${sx(0)}" y1="${pt}" x2="${sx(0)}" y2="${H - pb}" stroke="var(--border,#345)" stroke-dasharray="2 2"/>` : "";
+    const mark = (lamStar != null && fStar != null) ? `<circle cx="${sx(lamStar).toFixed(1)}" cy="${sy(fStar).toFixed(1)}" r="3.5" fill="#e5604d"/>` : "";
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:300px">
+      <rect x="${pl}" y="${pt}" width="${W - pl - pr}" height="${H - pt - pb}" fill="none" stroke="var(--border,#345)"/>
+      ${zeroX}
+      <path d="${path('fm')}" fill="none" stroke="#8a5a2b" stroke-width="1.6"/>
+      <path d="${path('ff')}" fill="none" stroke="#1f6fd0" stroke-width="1.6"/>
+      ${mark}
+      ${ticksY}
+      <text x="${(pl + (W - pr)) / 2}" y="${H - 4}" font-size="8" text-anchor="middle" fill="var(--muted,#789)">λ</text>
+      <text x="${W - pr - 2}" y="${pt + 10}" font-size="8" text-anchor="end" fill="#8a5a2b">moment</text>
+      <text x="${W - pr - 2}" y="${pt + 20}" font-size="8" text-anchor="end" fill="#1f6fd0">force</text>
+    </svg>`;
   }
   draw.slope = ({ p, out }) => {
     const { ctx, w, h } = fitCanvas($("s_canvas"));
@@ -102,6 +159,34 @@
     // ground line
     ctx.strokeStyle = "#5b4a2e"; ctx.lineWidth = 2;
     ctx.beginPath(); prof.forEach((pt, i) => i ? ctx.lineTo(sx(pt.x), sy(pt.y)) : ctx.moveTo(sx(pt.x), sy(pt.y))); ctx.stroke();
+
+    // trial-surface fan (entry-and-exit search): faint arcs below the ground.
+    if (out.trials && out.trials.length) {
+      ctx.strokeStyle = "rgba(31,111,208,.10)"; ctx.lineWidth = 1;
+      const step = Math.max(1, Math.floor(out.trials.length / 300));
+      for (let t = 0; t < out.trials.length; t += step) {
+        const tr = out.trials[t];
+        ctx.beginPath(); let st = false;
+        for (let x = tr.xc - tr.R; x <= tr.xc + tr.R; x += (2 * tr.R) / 120) {
+          const dx = x - tr.xc; if (Math.abs(dx) > tr.R) continue;
+          const yy = tr.yc - Math.sqrt(tr.R * tr.R - dx * dx);
+          if (yy > window.Slope.surfaceY(prof, x) + 0.01) { st = false; continue; }
+          if (!st) { ctx.moveTo(sx(x), sy(yy)); st = true; } else ctx.lineTo(sx(x), sy(yy));
+        }
+        ctx.stroke();
+      }
+    }
+
+    // water table / piezometric line (dashed blue).
+    let waterLine = null;
+    if (p.porePressureMode === "watertable") waterLine = [{ x: 0, y: p.wt }, { x: prof[prof.length - 1].x, y: p.wt }];
+    else if (p.porePressureMode === "piezometric" && p.piezo && p.piezo.length >= 2) waterLine = p.piezo;
+    if (waterLine) {
+      ctx.save(); ctx.strokeStyle = "#1f6fd0"; ctx.lineWidth = 1.6; ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      waterLine.forEach((pt, i) => i ? ctx.lineTo(sx(pt.x), sy(pt.y)) : ctx.moveTo(sx(pt.x), sy(pt.y)));
+      ctx.stroke(); ctx.restore();
+    }
 
     if (out.best) {
       const b = out.best;
@@ -618,7 +703,7 @@
   let currentPath = null;
 
   function methodIdFor(mod) {
-    if (mod === "slope") return $("s_method").value === "fellenius" ? "slope.fellenius" : "slope.bishop";
+    if (mod === "slope") { const m = $("s_method").value; return m === "fellenius" ? "slope.fellenius" : m === "spencer" ? "slope.spencer" : "slope.bishop"; }
     if (mod === "seep") return ($("p_transient") && $("p_transient").checked) ? "seep.transient" : "seep.steady";
     if (mod === "sigma") return "sigma.elastic";
     if (mod === "consolidation") return "consolidation.terzaghi1d";
@@ -649,9 +734,13 @@
   }
   function syncSlopeRows() {
     if (!$("s_pp")) return;
-    const wt = $("s_pp").value === "watertable";
-    $("s_ru_row").style.display = wt ? "none" : "flex";
-    $("s_wt_row").style.display = wt ? "flex" : "none";
+    const mode = $("s_pp").value;
+    $("s_ru_row").style.display = mode === "ru" ? "flex" : "none";
+    $("s_wt_row").style.display = mode === "watertable" ? "flex" : "none";
+    $("s_piezo_row").style.display = mode === "piezometric" ? "flex" : "none";
+    const ee = $("s_search") && $("s_search").value === "entryexit";
+    if ($("s_ee_rows")) $("s_ee_rows").style.display = ee ? "block" : "none";
+    if ($("s_grid_row")) $("s_grid_row").style.display = ee ? "none" : "flex";
   }
 
   // ---- Materials library ----
@@ -699,7 +788,7 @@
 
   // ---- Project <-> DOM sync and file operations ----
   const DOM_MAP = {
-    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", gamma: "s_gamma", c: "s_c", phi: "s_phi", ru: "s_ru", method: ["s_method", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt" },
+    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", gamma: "s_gamma", c: "s_c", phi: "s_phi", ru: "s_ru", method: ["s_method", "str"], search: ["s_search", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt", piezoText: ["s_piezo", "str"], e0: "s_e0", e1: "s_e1", x0: "s_x0", x1: "s_x1", een: "s_een", enr: "s_enr" },
     seep:  { materialId: ["p_mat", "str"], W: "p_W", D: "p_D", nx: "p_nx", hu: "p_hu", hd: "p_hd", k: "p_k", wall_on: ["p_wall_on", "bool"], wall_x: "p_wall_x", wall_d: "p_wall_d" },
     sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] },
     consolidation: { H: "c_H", cv: "c_cv", u0: "c_u0", drainage: ["c_drain", "str"], tEnd: "c_tEnd", nz: "c_nz" },
@@ -871,6 +960,7 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
     $("g_mat").addEventListener("change", () => applyMaterialToAnalysis("sigma", $("g_mat").value));
     $("s_method").addEventListener("change", () => setBadge("slope"));
     $("s_pp").addEventListener("change", syncSlopeRows);
+    $("s_search").addEventListener("change", syncSlopeRows);
     syncSlopeRows();
     $("btn_new").addEventListener("click", doNew);
     $("btn_open").addEventListener("click", doOpen);

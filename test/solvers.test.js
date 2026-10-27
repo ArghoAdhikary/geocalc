@@ -33,6 +33,30 @@ test("slope: lower cohesion lowers the factor of safety", () => {
   const lo = G.Slope.analyze({ ...base, c: 2 }).best.fos;
   assert.ok(lo < hi, `expected lower c -> lower FoS (c=2:${lo} vs c=20:${hi})`);
 });
+test("slope: Spencer satisfies force and moment equilibrium (|Fm−Ff| small)", () => {
+  const p = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, nslices: 40 };
+  const sp = G.Slope.spencerForCircle(p, 24, 17, 17, 40);
+  assert.ok(sp, "Spencer should converge on this circle");
+  assert.ok(sp.residual < 5e-3, "force & moment factors should coincide, residual=" + sp.residual);
+});
+test("slope: Spencer moment factor at λ=0 equals Bishop (circular surface)", () => {
+  const p = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, nslices: 40 };
+  const fm0 = G.Slope.spencerForCircle(p, 24, 17, 17, 40).curve.find(c => c.lambda === 0).fm;
+  const bis = G.Slope.foSForCircle(p, 24, 17, 17, 40).bishop;
+  assert.ok(Math.abs(fm0 - bis) < 1e-4, `Spencer Fm(0)=${fm0} vs Bishop=${bis}`);
+});
+test("slope: entry-and-exit search matches the grid-search critical FoS", () => {
+  const p = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, method: "bishop", nslices: 30, grid: 16 };
+  const grid = G.Slope.analyze(p).best.fos;
+  const ee = G.Slope.analyze({ ...p, search: "entryexit", entry: { x0: 2, x1: 9, n: 6 }, exit: { x0: 22, x1: 36, n: 6 }, nR: 12 }).best.fos;
+  assert.ok(Math.abs(ee - grid) / grid < 0.03, `entry/exit=${ee} vs grid=${grid}`);
+});
+test("slope: a flat piezometric line reproduces the water-table pore pressures", () => {
+  const base = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, nslices: 40 };
+  const fWT = G.Slope.foSForCircle({ ...base, porePressureMode: "watertable", wt: 5 }, 24, 17, 17, 40).bishop;
+  const fPZ = G.Slope.foSForCircle({ ...base, porePressureMode: "piezometric", piezo: [{ x: -10, y: 5 }, { x: 60, y: 5 }] }, 24, 17, 17, 40).bishop;
+  assert.strictEqual(fWT, fPZ);
+});
 test("seep: steady flow is positive and bounded", () => {
   const s = G.Seep.solve({ W: 40, D: 20, nx: 60, hu: 16, hd: 4, k: 1, wall_on: true, wall_x: 20, wall_d: 12 });
   assert.ok(s.q > 0 && isFinite(s.q), "flow should be positive and finite");

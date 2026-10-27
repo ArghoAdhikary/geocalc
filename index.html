@@ -98,11 +98,17 @@
           <select id="s_pp">
             <option value="ru">rᵤ coefficient</option>
             <option value="watertable">Water table (phreatic transfer)</option>
+            <option value="piezometric">Piezometric line</option>
           </select>
         </label>
         <label id="s_ru_row">Pore pressure ratio r<sub>u</sub><input id="s_ru" type="number" value="0.25" step="0.05" min="0" max="0.7"></label>
         <label id="s_wt_row" style="display:none">Water-table elevation (m)<input id="s_wt" type="number" value="4" step="0.5"></label>
-        <span class="note">Water table applies u = γ<sub>w</sub>·(wt − base), the phreatic result of a seepage analysis.</span>
+        <label id="s_piezo_row" style="display:none">Piezometric line — one “x, elevation” per line
+          <textarea id="s_piezo" rows="3" style="font-family:var(--mono,monospace);width:100%">0, 9
+20, 7
+40, 7</textarea>
+        </label>
+        <span class="note">Water table / piezometric line apply u = γ<sub>w</sub>·(water elevation − base). A saved scenario, not a solved seepage field; no suction above the line.</span>
       </fieldset>
       <fieldset>
         <legend>Method &amp; search</legend>
@@ -110,12 +116,30 @@
           <select id="s_method">
             <option value="bishop">Bishop simplified</option>
             <option value="fellenius">Fellenius (ordinary)</option>
+            <option value="spencer">Spencer (force + moment)</option>
+          </select>
+        </label>
+        <label>Slip-surface search
+          <select id="s_search">
+            <option value="grid">Grid of centres &amp; radii</option>
+            <option value="entryexit">Entry and exit</option>
           </select>
         </label>
         <label>Slices<input id="s_nslices" type="number" value="30" step="5" min="8" max="80"></label>
-        <label>Search grid<input id="s_grid" type="number" value="14" step="1" min="4" max="24"></label>
+        <label id="s_grid_row">Search grid<input id="s_grid" type="number" value="14" step="1" min="4" max="24"></label>
+        <div id="s_ee_rows" style="display:none">
+          <label>Entry range x (m): from / to
+            <span style="display:flex;gap:4px"><input id="s_e0" type="number" value="2" step="0.5"><input id="s_e1" type="number" value="9" step="0.5"></span>
+          </label>
+          <label>Exit range x (m): from / to
+            <span style="display:flex;gap:4px"><input id="s_x0" type="number" value="24" step="0.5"><input id="s_x1" type="number" value="36" step="0.5"></span>
+          </label>
+          <label>Increments per range<input id="s_een" type="number" value="6" step="1" min="2" max="15"></label>
+          <label>Radius increments<input id="s_enr" type="number" value="12" step="1" min="3" max="25"></label>
+        </div>
       </fieldset>
       <div id="s_result" class="result"></div>
+      <div id="s_conv" class="result" style="display:none"></div>
     </div>
 
     <!-- SEEP -->
@@ -343,7 +367,7 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "7.0.0";</script>
+<script>window.GC_VERSION = "8.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>

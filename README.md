@@ -9,7 +9,7 @@ its analytical benchmarks pass — and these run in CI before every release.
 
 | Module | What it does | Maturity |
 |---|---|---|
-| **Slope stability** | Method of slices (Fellenius, Bishop), circular search, rᵤ **or** water-table pore pressure | Verified (envelope) |
+| **Slope stability** | Method of slices — Fellenius, Bishop, **Spencer** (force + moment); **grid** or **entry-and-exit** circular search; rᵤ, water-table, **or piezometric-line** pore pressure | Verified (envelope) |
 | **Seepage** | 2D steady (FD) and transient (implicit) saturated flow, cutoff wall | Verified (envelope) |
 | **FE flow** | Finite-element meshing for steady flow (triangular elements) | Verified (envelope) |
 | **Stress–deformation** | 2D plane-strain linear-elastic FEM, self-weight + surcharge | Implemented (unverified) |

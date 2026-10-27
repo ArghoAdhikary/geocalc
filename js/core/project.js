@@ -40,8 +40,10 @@
     return {
       slope: { materialId: "mat_fill", H: 10, beta: 34, crest: 12, toe: 14,
                gamma: 18, c: 10, phi: 25,
-               ru: 0.25, method: "bishop", nslices: 30, grid: 14,
-               porePressureMode: "ru", wt: 4 },
+               ru: 0.25, method: "bishop", search: "grid", nslices: 30, grid: 14,
+               porePressureMode: "ru", wt: 4,
+               piezoText: "0, 9\n20, 7\n40, 7",
+               e0: 2, e1: 9, x0: 24, x1: 36, een: 6, enr: 12 },
       seep:  { W: 40, D: 20, nx: 80, hu: 16, hd: 4, k: 1.0,
                wall_on: true, wall_x: 20, wall_d: 12 },
       sigma: { materialId: "mat_fill", W: 20, H: 10, nx: 18,
@@ -59,7 +61,7 @@
     return {
       schemaVersion: SCHEMA_VERSION,
       app: APP,
-      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "7.0.0",
+      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "8.0.0",
       name: name || "Untitled project",
       created: now,
       modified: now,

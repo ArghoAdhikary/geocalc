@@ -409,6 +409,75 @@
         const b = S.Probabilistic.monteCarloSlope(bp, d, 100, 777);
         return { computed: b.mean, reference: a.mean, error: Math.abs(a.mean - b.mean) + Math.abs(a.pf - b.pf) };
       }
+    },
+    {
+      id: "slope.spencer.lambda0",
+      method: "slope.spencer",
+      title: "Spencer moment FoS at λ=0 equals Bishop (circular surface)",
+      source: "Theoretical identity: with zero interslice shear, Spencer's moment equation reduces to Bishop's simplified method",
+      tol: 1e-5, metric: "|F_Spencer,moment(λ=0) − F_Bishop|",
+      run(S) {
+        const p = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, nslices: 40 };
+        const sp = S.Slope.spencerForCircle(p, 24, 17, 17, 40);
+        const fm0 = sp.curve.find(c => c.lambda === 0).fm;
+        const bis = S.Slope.foSForCircle(p, 24, 17, 17, 40).bishop;
+        return { computed: fm0, reference: bis, error: Math.abs(fm0 - bis) };
+      }
+    },
+    {
+      id: "slope.spencer.equilibrium",
+      method: "slope.spencer",
+      title: "Spencer satisfies force and moment equilibrium simultaneously",
+      source: "Defining property of Spencer's method: the interslice inclination λ* makes the force and moment factors coincide",
+      tol: 5e-3, metric: "|F_moment − F_force| at the solution λ*",
+      run(S) {
+        const p = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, nslices: 40 };
+        const sp = S.Slope.spencerForCircle(p, 24, 17, 17, 40);
+        return { computed: sp.fos, reference: sp.fos, error: sp.residual };
+      }
+    },
+    {
+      id: "slope.spencer.bracket",
+      method: "slope.spencer",
+      title: "Spencer FoS lies between Fellenius and Bishop (within 2%)",
+      source: "Expected ordering of limit-equilibrium methods for a circular surface",
+      tol: 0, metric: "ordering F_fellenius ≤ F_spencer ≤ 1.02·F_bishop",
+      run(S) {
+        const p = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, nslices: 40 };
+        const r = S.Slope.foSForCircle(p, 24, 17, 17, 40);
+        const sp = S.Slope.spencerForCircle(p, 24, 17, 17, 40);
+        const ok = sp.fos >= r.fellenius - 1e-6 && sp.fos <= r.bishop * 1.02 + 1e-6;
+        return { computed: sp.fos, reference: r.bishop, error: ok ? 0 : Math.abs(sp.fos - r.bishop) };
+      }
+    },
+    {
+      id: "groundwater.piezometric.flat",
+      method: "groundwater.piezometric",
+      title: "Horizontal piezometric line reproduces the water-table pore pressures",
+      source: "A flat piezometric line at elevation z_w gives u = γ_w·(z_w − base), identical to the water-table model",
+      tol: 1e-9, metric: "|F_piezometric − F_watertable| (flat line)",
+      run(S) {
+        const base = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, nslices: 40 };
+        const pWT = Object.assign({}, base, { porePressureMode: "watertable", wt: 5 });
+        const pPZ = Object.assign({}, base, { porePressureMode: "piezometric", piezo: [{ x: -10, y: 5 }, { x: 60, y: 5 }] });
+        const fWT = S.Slope.foSForCircle(pWT, 24, 17, 17, 40).bishop;
+        const fPZ = S.Slope.foSForCircle(pPZ, 24, 17, 17, 40).bishop;
+        return { computed: fPZ, reference: fWT, error: Math.abs(fPZ - fWT) };
+      }
+    },
+    {
+      id: "slope.entryexit.consistency",
+      method: "slope.entryexit",
+      title: "Entry-and-exit search converges to the grid-search critical FoS",
+      source: "Two independent search families over the same problem must find the same critical circle",
+      tol: 0.03, metric: "relative FoS difference (entry/exit vs grid)",
+      run(S) {
+        const p = { H: 10, beta: 34, crest: 12, toe: 14, gamma: 18, c: 10, phi: 25, ru: 0.25, method: "bishop", nslices: 30, grid: 16 };
+        const grid = S.Slope.analyze(p);
+        const ee = Object.assign({}, p, { search: "entryexit", entry: { x0: 2, x1: 9, n: 6 }, exit: { x0: 22, x1: 36, n: 6 }, nR: 12 });
+        const eo = S.Slope.analyze(ee);
+        return { computed: eo.best.fos, reference: grid.best.fos, error: Math.abs(eo.best.fos - grid.best.fos) / grid.best.fos };
+      }
     }
   ];
 

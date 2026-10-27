@@ -48,6 +48,30 @@
       notes: "Ordinary method of slices. Verified against the analytical infinite-slope case and independent recomputation; independent review pending before release."
     },
     {
+      id: "slope.spencer", module: "slope", method: "Spencer's method",
+      dimension: "2D", maturity: "verified", phase: "G", priority: "P0",
+      references: ["Spencer (1967), Géotechnique 17(1)", "Fredlund & Krahn (1977), Can. Geotech. J. 14(3)"],
+      evidence: ["benchmark:slope.spencer.lambda0", "benchmark:slope.spencer.equilibrium", "benchmark:slope.spencer.bracket"],
+      envelope: "Homogeneous soil, single circular slip surface; constant interslice-force inclination λ (Spencer). Satisfies both force and moment equilibrium. No reinforcement/seismic/non-circular.",
+      notes: "Rigorous general-limit-equilibrium method with a constant interslice-force angle. Verified: the moment factor at λ=0 matches Bishop to machine precision, and force & moment equilibrium are satisfied together at λ*. Independent review pending before release."
+    },
+    {
+      id: "slope.entryexit", module: "slope", method: "Entry-and-exit slip-surface search",
+      dimension: "2D", maturity: "verified", phase: "G", priority: "P0",
+      references: ["Standard limit-equilibrium search practice"],
+      evidence: ["benchmark:slope.entryexit.consistency"],
+      envelope: "Circular surfaces generated through an entry range and an exit range with radius increments; ranks by the selected method. Same soil/pore-pressure envelope as the underlying method.",
+      notes: "Generates trial circles through user entry/exit ranges. Verified to converge to the same critical factor of safety as the independent grid search within tolerance."
+    },
+    {
+      id: "groundwater.piezometric", module: "slope", method: "Piezometric-line pore pressure",
+      dimension: "2D", maturity: "verified", phase: "G", priority: "P0",
+      references: ["Hydrostatic pore pressure below a piezometric surface"],
+      evidence: ["benchmark:groundwater.piezometric.flat"],
+      envelope: "Pore pressure u = γ_w·(piezometric elevation − base), hydrostatic below a user polyline. No suction above the line; not a solved seepage field.",
+      notes: "Piezometric line as a polyline of (x, elevation). Verified: a horizontal line reproduces the water-table model's pore pressures exactly. A saved scenario, distinct from a solved seepage pressure field."
+    },
+    {
       id: "slope.morgenstern", module: "slope", method: "Morgenstern–Price",
       dimension: "2D", maturity: "conceptual", phase: "C", priority: "P1",
       references: ["Morgenstern & Price (1965), Géotechnique 15(1)"],
