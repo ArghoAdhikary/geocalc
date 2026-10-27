@@ -7,7 +7,7 @@
   // ---------------- Analysis switching (ribbon tabs + project tree) ----------------
   let current = "slope";
   let slopeCustomProfile = null; // ground surface sent from the geometry editor
-  const TITLE = { geometry: "Geometry editor", slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", flow3d: "3D flow", prob: "Probabilistic", materials: "Materials library", validation: "Validation" };
+  const TITLE = { geometry: "Geometry editor", slope: "Slope stability", seep: "Seepage", sigma: "Stress–deformation", consolidation: "Consolidation", dynamics: "Dynamics / site response", thermal: "Thermal", flow3d: "3D flow", prob: "Probabilistic", materials: "Materials library", standards: "Standards & metadata", validation: "Validation" };
   const statusStore = {};
   function setStatus(mod, main, right) {
     statusStore[mod] = { main, right: right || "" };
@@ -569,7 +569,8 @@
   function geoMatColor(id) {
     if (!project) return "#c9c9c9";
     const i = project.materials.findIndex(m => m.id === id);
-    return i >= 0 ? GEO_PALETTE[i % GEO_PALETTE.length] : "#c2c2c2";
+    if (i < 0) return "#c2c2c2";
+    return project.materials[i].color || GEO_PALETTE[i % GEO_PALETTE.length];
   }
   function geoMatName(id) { const m = project && Project.materialById(project, id); return m ? m.name : "(none)"; }
   function distToSeg(p, a, b) {
@@ -1042,6 +1043,18 @@
     addMsg("bot", prov === "offline" ? "Offline mode ready." : `${PROV_NAME[prov]} connected. Ask me anything in plain language.`);
   });
 
+  // ---- Manual AI mode dialog (Phase K) ----
+  const manDlg = $("ai_manual_dialog");
+  $("chat_manual").addEventListener("click", () => { refreshManualPrompt(); manDlg.showModal(); });
+  ["mx_summary", "mx_inputs", "mx_results", "mx_materials", "mx_geometry"].forEach(id => $(id).addEventListener("change", refreshManualPrompt));
+  $("man_question").addEventListener("input", refreshManualPrompt);
+  $("man_copy").addEventListener("click", async () => {
+    const text = $("man_prompt").value;
+    try { await navigator.clipboard.writeText(text); $("man_copy").textContent = "Copied ✓"; }
+    catch (e) { $("man_prompt").select(); document.execCommand && document.execCommand("copy"); $("man_copy").textContent = "Copied ✓"; }
+    setTimeout(() => { $("man_copy").textContent = "Copy prompt"; }, 1500);
+  });
+
   showEmptyState();
   refreshProvLabel();
 
@@ -1076,9 +1089,10 @@
   }
   function onViewChanged(mod) {
     const compute = $("btn_compute");
-    if (mod === "materials" || mod === "validation") { compute.disabled = true; compute.style.opacity = .4; }
+    if (mod === "materials" || mod === "validation" || mod === "standards") { compute.disabled = true; compute.style.opacity = .4; }
     else { compute.disabled = false; compute.style.opacity = 1; setBadge(mod); }
     if (mod === "geometry") geomEditor.onShow();
+    if (mod === "standards") renderStandardsView();
   }
   function syncSlopeRows() {
     if (!$("s_pp")) return;
@@ -1091,31 +1105,176 @@
     if ($("s_grid_row")) $("s_grid_row").style.display = ee ? "none" : "flex";
   }
 
-  // ---- Materials library ----
-  function matField(label, f, val) { return `<label>${label}<input type="number" data-f="${f}" value="${val}" step="any"></label>`; }
+  // ---- Materials library (Phase I) ----
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  function matNum(label, f, val, step) { return `<label>${label}<input type="number" data-f="${f}" value="${val}" step="${step || "any"}"></label>`; }
+  function matText(label, f, val, ph) { return `<label>${label}<input type="text" data-f="${f}" value="${esc(val)}" placeholder="${ph || ""}"></label>`; }
+  let matSearch = "";
   function renderMaterials() {
     if (!project) return;
     const host = $("mat_table"); host.innerHTML = "";
-    project.materials.forEach((mat, i) => {
+    const q = matSearch.trim().toLowerCase();
+    const list = project.materials.filter(m => !q || (m.name + " " + (m.classification || "")).toLowerCase().includes(q));
+    if (!list.length) { host.innerHTML = '<p class="note">No materials match the search.</p>'; return; }
+    list.forEach(mat => {
+      const i = project.materials.indexOf(mat);
+      const warns = Project.materialWarnings(mat);
       const row = document.createElement("div"); row.className = "mat-row";
       row.innerHTML =
-        `<div class="mat-head"><input data-f="name" value="${mat.name}"><button class="mat-del" title="Delete">✕</button></div>
+        `<div class="mat-head">
+           <input type="color" class="mat-color" data-f="color" value="${mat.color || "#c9b88a"}" title="Display colour">
+           <input class="mat-name" data-f="name" value="${esc(mat.name)}">
+           <button class="mat-dup" title="Duplicate">⧉</button>
+           <button class="mat-del" title="Delete">✕</button>
+         </div>
+         ${mat.illustrative ? '<div class="mat-tag">illustrative — not site-verified</div>' : ""}
+         <div class="mat-grid2">
+           ${matText("Classification", "classification", mat.classification, "e.g. CL clay, SW sand")}
+           <label>Drainage for analysis<select data-f="drainage"><option value="drained"${mat.drainage === "drained" ? " selected" : ""}>Drained (c′, φ′)</option><option value="undrained"${mat.drainage === "undrained" ? " selected" : ""}>Undrained (cu)</option></select></label>
+         </div>
          <div class="mat-grid">
-           ${matField("γ (kN/m³)", "gamma", mat.gamma)}${matField("c′ (kPa)", "c", mat.c)}
-           ${matField("φ′ (°)", "phi", mat.phi)}${matField("E (MPa)", "E", mat.E)}
-           ${matField("ν", "nu", mat.nu)}${matField("k (m/day)", "k", mat.k)}
-         </div>`;
-      row.querySelectorAll("input[data-f]").forEach(inp => inp.addEventListener("change", () => {
-        const f = inp.dataset.f; mat[f] = f === "name" ? inp.value : parseFloat(inp.value);
+           ${matNum("γ bulk (kN/m³)", "gamma", mat.gamma)}${matNum("γ sat (kN/m³)", "gammaSat", mat.gammaSat)}
+           ${matNum("c′ (kPa)", "c", mat.c)}${matNum("φ′ (°)", "phi", mat.phi)}
+           ${matNum("cu undrained (kPa)", "cu", mat.cu)}${matNum("k (m/day)", "k", mat.k)}
+           ${matNum("E (MPa)", "E", mat.E)}${matNum("ν", "nu", mat.nu, "0.01")}
+         </div>
+         <details class="mat-prov"><summary>Provenance &amp; approval</summary>
+           <div class="mat-grid2">
+             ${matText("Source / document", "source", mat.source)}
+             ${matText("Test method", "testMethod", mat.testMethod)}
+             ${matText("Date", "date", mat.date, "YYYY-MM-DD")}
+             ${matText("Uncertainty", "uncertainty", mat.uncertainty)}
+             ${matText("Applicability", "applicability", mat.applicability)}
+             ${matText("Approved by (engineer)", "approvedBy", mat.approvedBy)}
+           </div>
+           <label class="inline"><input type="checkbox" data-f="illustrative" ${mat.illustrative ? "checked" : ""}> Illustrative example (uncheck for site-verified data)</label>
+         </details>
+         ${warns.length ? `<div class="mat-warn">⚠ ${warns.map(esc).join("; ")}</div>` : ""}`;
+      row.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("change", () => {
+        const f = inp.dataset.f;
+        mat[f] = inp.type === "checkbox" ? inp.checked : (inp.type === "number" ? parseFloat(inp.value) : inp.value);
         Project.bumpRevision(project); populateMatSelectors();
+        if (["color"].includes(f) || inp.type === "number") { renderMaterials(); if (current === "geometry") geomEditor.render(), geomEditor.renderRegionList(); }
       }));
+      row.querySelector(".mat-dup").addEventListener("click", () => {
+        const copy = Project.normalizeMaterial(Object.assign({}, mat, { id: Project.uid("mat"), name: mat.name + " (copy)", illustrative: false }));
+        project.materials.splice(i + 1, 0, copy); Project.bumpRevision(project); renderMaterials(); populateMatSelectors();
+      });
       row.querySelector(".mat-del").addEventListener("click", () => {
-        if (project.materials.length <= 1) return;
+        if (project.materials.length <= 1) { note("Keep at least one material"); return; }
         project.materials.splice(i, 1); Project.bumpRevision(project); renderMaterials(); populateMatSelectors();
       });
       host.appendChild(row);
     });
   }
+  function addMaterial() {
+    const m = Project.normalizeMaterial({ id: Project.uid("mat"), name: "New material", classification: "", color: GEO_PALETTE[project.materials.length % GEO_PALETTE.length], illustrative: false });
+    project.materials.push(m); Project.bumpRevision(project); renderMaterials(); populateMatSelectors();
+  }
+  function exportMaterials() {
+    const lib = { app: "GeoCalc Pro", type: "material-library", version: 1, exported: new Date().toISOString(), materials: project.materials };
+    downloadFile((project.name || "materials") + "-library.json", JSON.stringify(lib, null, 2), "application/json");
+    note("Exported " + project.materials.length + " materials");
+  }
+  async function importMaterials() {
+    const f = await pickFile(); if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      const mats = Array.isArray(data) ? data : (data.materials || []);
+      if (!mats.length) { note("No materials found in file"); return; }
+      let added = 0;
+      for (const raw of mats) {
+        const m = Project.normalizeMaterial(Object.assign({}, raw, { id: Project.uid("mat") }));
+        if (!m.name) continue;
+        project.materials.push(m); added++;
+      }
+      Project.bumpRevision(project); renderMaterials(); populateMatSelectors();
+      note("Imported " + added + " materials");
+    } catch (e) { note("Import failed: " + e.message); }
+  }
+
+  // ---- Standards register & project metadata (Phase J) ----
+  const STD_STATUS = {
+    "verification-required": "Verification required",
+    "referenced": "Referenced (not auto-checked)",
+    "implemented-check": "Implemented check",
+    "not-applicable": "Not applicable"
+  };
+  function renderStandardsView() {
+    if (!project) return;
+    if (!project.meta) project.meta = Project.defaultMeta();
+    if (!Array.isArray(project.standards)) project.standards = [];
+    if (!Array.isArray(project.criteria)) project.criteria = [];
+    // metadata fields
+    document.querySelectorAll("#props-standards [data-m]").forEach(el => {
+      el.value = project.meta[el.dataset.m] || "";
+      el.onchange = () => { project.meta[el.dataset.m] = el.value; Project.bumpRevision(project); renderStdSummary(); };
+    });
+    renderStandardsTable(); renderCriteriaTable(); renderStdSummary();
+  }
+  function renderStandardsTable() {
+    const host = $("std_table"); if (!host) return;
+    host.innerHTML = project.standards.map((s, i) => `
+      <div class="std-row" data-i="${i}">
+        <div class="std-head"><input class="std-id" data-f="identifier" value="${esc(s.identifier)}" placeholder="AS ####"><button class="mat-del" title="Delete">✕</button></div>
+        <input class="std-title" data-f="title" value="${esc(s.title)}" placeholder="Title">
+        <div class="mat-grid2">
+          <label>Edition<input data-f="edition" value="${esc(s.edition)}" placeholder="verify"></label>
+          <label>Last verified<input data-f="lastVerified" value="${esc(s.lastVerified)}" placeholder="YYYY-MM-DD"></label>
+        </div>
+        <label>Applicable feature<input data-f="applicableFeature" value="${esc(s.applicableFeature)}"></label>
+        <label>Authoritative link<input data-f="link" value="${esc(s.link)}" placeholder="https://"></label>
+        <label>Status<select data-f="status">${Object.keys(STD_STATUS).map(k => `<option value="${k}"${s.status === k ? " selected" : ""}>${STD_STATUS[k]}</option>`).join("")}</select></label>
+      </div>`).join("") || '<p class="note">No standards listed.</p>';
+    host.querySelectorAll(".std-row").forEach(row => {
+      const i = +row.dataset.i;
+      row.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("change", () => { project.standards[i][inp.dataset.f] = inp.value; Project.bumpRevision(project); renderStdSummary(); }));
+      row.querySelector(".mat-del").addEventListener("click", () => { project.standards.splice(i, 1); Project.bumpRevision(project); renderStandardsTable(); renderStdSummary(); });
+    });
+  }
+  function renderCriteriaTable() {
+    const host = $("crit_table"); if (!host) return;
+    host.innerHTML = project.criteria.map((c, i) => `
+      <div class="std-row" data-i="${i}">
+        <div class="std-head"><input class="std-id" data-f="name" value="${esc(c.name)}" placeholder="e.g. Required FoS (long-term)"><button class="mat-del" title="Delete">✕</button></div>
+        <div class="mat-grid2">
+          <label>Value<input data-f="value" value="${esc(c.value)}"></label>
+          <label>Unit<input data-f="unit" value="${esc(c.unit)}" placeholder="—"></label>
+        </div>
+        <label>Source / basis<input data-f="source" value="${esc(c.source)}" placeholder="project brief, engineer judgement…"></label>
+        <label>Approved by<input data-f="approvedBy" value="${esc(c.approvedBy)}"></label>
+      </div>`).join("") || '<p class="note">No design criteria entered. These are your project values — GeoCalc does not assert any standard-mandated factor.</p>';
+    host.querySelectorAll(".std-row").forEach(row => {
+      const i = +row.dataset.i;
+      row.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("change", () => { project.criteria[i][inp.dataset.f] = inp.value; Project.bumpRevision(project); }));
+      row.querySelector(".mat-del").addEventListener("click", () => { project.criteria.splice(i, 1); Project.bumpRevision(project); renderCriteriaTable(); });
+    });
+  }
+  function renderStdSummary() {
+    const host = $("std_summary"); if (!host || !project) return;
+    const m = project.meta || {};
+    const rows = (project.standards || []).map(s => {
+      const cls = s.status === "verification-required" ? "std-pill-warn" : s.status === "not-applicable" ? "std-pill-mute" : "std-pill-ok";
+      const link = s.link ? ` · <a href="${esc(s.link)}" target="_blank" rel="noopener">link</a>` : "";
+      return `<tr><td><b>${esc(s.identifier || "—")}</b><br><span class="muted">${esc(s.title)}</span></td>
+        <td>${esc(s.applicableFeature || "—")}</td>
+        <td><span class="std-pill ${cls}">${STD_STATUS[s.status] || esc(s.status)}</span><br><span class="muted">ed. ${esc(s.edition || "verify")}${s.lastVerified ? " · " + esc(s.lastVerified) : ""}${link}</span></td></tr>`;
+    }).join("");
+    const crit = (project.criteria || []).map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.value)} ${esc(c.unit || "")}</td><td class="muted">${esc(c.source || "—")}${c.approvedBy ? " · " + esc(c.approvedBy) : ""}</td></tr>`).join("");
+    host.innerHTML = `
+      <div class="std-doc">
+        <h2>${esc(project.name || "Project")}</h2>
+        <div class="muted">${esc(m.site || "(site not set)")} · ${esc(m.jurisdiction || "")}</div>
+        <div class="muted">Author: ${esc(m.author || "—")} · Checker: ${esc(m.checker || "—")} · Design situation: ${esc(m.designSituation || "—")}</div>
+        <p class="std-disclaimer">This is a <b>register</b> of candidate standards and user-entered criteria — <b>not</b> a compliance determination. GeoCalc does not invent clause numbers, editions or mandated factors, and no Australian Standard supplies universal design values. Verify the current edition, scope and applicability for your task and jurisdiction; obtain competent engineering review.</p>
+        <h3>Standards register</h3>
+        <table class="std-doc-table"><thead><tr><th>Standard</th><th>Applicable feature</th><th>Status / edition</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="muted">none</td></tr>'}</tbody></table>
+        <h3>Design criteria (user-entered)</h3>
+        <table class="std-doc-table"><thead><tr><th>Criterion</th><th>Value</th><th>Basis / approval</th></tr></thead><tbody>${crit || '<tr><td colspan="3" class="muted">none</td></tr>'}</tbody></table>
+      </div>`;
+  }
+  function addStandard() { project.standards.push({ id: Project.uid("std"), title: "", identifier: "", edition: "", amendments: "", applicableFeature: "", link: "", lastVerified: "", status: "verification-required" }); Project.bumpRevision(project); renderStandardsTable(); renderStdSummary(); }
+  function addCriterion() { project.criteria.push({ id: Project.uid("crit"), name: "", value: "", unit: "", source: "", approvedBy: "" }); Project.bumpRevision(project); renderCriteriaTable(); }
   function populateMatSelectors() {
     if (!project) return;
     [["s_mat", "slope"], ["p_mat", "seep"], ["g_mat", "sigma"]].forEach(([id, mod]) => {
@@ -1156,6 +1315,7 @@
     geomEditor.fromProject();
     geomEditor.syncMatSelect(); geomEditor.renderRegionList(); geomEditor.renderTable(); geomEditor.renderValidation();
     if (current === "geometry") geomEditor.onShow();
+    renderStandardsView();
   }
   function recomputeAll() { runSeep(); runSigma(); runConsolidation(); runDynamics(); runThermal(); runFlow3d(); runSlope(); runProb(); if (current !== "materials" && current !== "validation") switchTo(current); }
   function note(msg) { $("status_right").textContent = msg; }
@@ -1230,6 +1390,49 @@
     if (mod === "sigma" && last.sigma) { const m = last.sigma.m; return { maxSettle: m.maxSettle, elements: m.tris.length }; }
     return null;
   }
+  // ---- Manual AI mode (Phase K): build a copy/paste prompt from chosen context ----
+  function buildManualPrompt() {
+    syncDomToProject();
+    const mod = activeAnalysis();
+    const q = ($("man_question").value || "").trim();
+    const lines = [];
+    lines.push("You are helping with a geotechnical analysis done in GeoCalc Pro, an independent limit-equilibrium/FE learning tool. Treat the numbers below as given; do not invent standard clause numbers or mandated factors.");
+    lines.push("");
+    if ($("mx_summary").checked) {
+      const u = project.settings.units;
+      lines.push(`PROJECT: ${project.name}`);
+      if (project.meta && (project.meta.site || project.meta.designSituation)) lines.push(`Site: ${project.meta.site || "—"} · Design situation: ${project.meta.designSituation || "—"}`);
+      lines.push(`Units: length ${u.length}, unit weight ${u.unitWeight}, stress ${u.stress}, permeability ${u.permeability}, angle ${u.angle}`);
+      lines.push(`Current analysis: ${TITLE[mod]} (method id ${methodIdFor(mod) || "—"})`);
+      lines.push("");
+    }
+    if ($("mx_inputs").checked) {
+      lines.push("ANALYSIS INPUTS:");
+      const a = project.analyses[mod] || {};
+      for (const k in a) if (typeof a[k] !== "object") lines.push(`  ${k} = ${a[k]}`);
+      lines.push("");
+    }
+    if ($("mx_results").checked) {
+      const r = summarizeResult(mod);
+      lines.push("CURRENT RESULT: " + (r ? JSON.stringify(r) : "(not computed yet)"));
+      lines.push("");
+    }
+    if ($("mx_materials").checked) {
+      lines.push("MATERIALS:");
+      for (const m of project.materials) lines.push(`  ${m.name} [${m.classification || "—"}]: γ=${m.gamma}, γsat=${m.gammaSat}, c'=${m.c}, φ'=${m.phi}, cu=${m.cu}, k=${m.k} (${m.illustrative ? "illustrative" : "site data"})`);
+      lines.push("");
+    }
+    if ($("mx_geometry").checked) {
+      const rs = (project.geometry && project.geometry.regions) || [];
+      lines.push("GEOMETRY REGIONS: " + (rs.length ? "" : "(none)"));
+      for (const r of rs) lines.push(`  ${r.name} [${geoMatName(r.materialId)}]: ${r.verts.map(v => `(${v.x},${v.y})`).join(" ")}`);
+      lines.push("");
+    }
+    lines.push("QUESTION: " + (q || "Explain this result and suggest sensible checks or sensitivity studies. Note any assumptions or limitations."));
+    return lines.join("\n");
+  }
+  function refreshManualPrompt() { const el = $("man_prompt"); if (el) el.value = buildManualPrompt(); }
+
   function buildReportHTML() {
     syncDomToProject();
     const mod = activeAnalysis();
@@ -1303,10 +1506,12 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
   function setupProjectUI() {
     if (!project) return;
     renderMaterials(); populateMatSelectors();
-    $("mat_add").addEventListener("click", () => {
-      project.materials.push({ id: Project.uid("mat"), name: "New material", gamma: 18, c: 5, phi: 28, E: 30, nu: 0.3, k: 1.0 });
-      Project.bumpRevision(project); renderMaterials(); populateMatSelectors();
-    });
+    $("mat_add").addEventListener("click", addMaterial);
+    $("mat_export").addEventListener("click", exportMaterials);
+    $("mat_import").addEventListener("click", importMaterials);
+    $("mat_search").addEventListener("input", e => { matSearch = e.target.value; renderMaterials(); });
+    $("std_add").addEventListener("click", addStandard);
+    $("crit_add").addEventListener("click", addCriterion);
     $("s_mat").addEventListener("change", () => applyMaterialToAnalysis("slope", $("s_mat").value));
     $("p_mat").addEventListener("change", () => applyMaterialToAnalysis("seep", $("p_mat").value));
     $("g_mat").addEventListener("change", () => applyMaterialToAnalysis("sigma", $("g_mat").value));

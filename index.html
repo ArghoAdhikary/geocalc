@@ -42,6 +42,7 @@
       <li class="tnode group">Data</li>
       <li class="tnode child" data-tab="geometry"><span class="ti">◇</span> Geometry</li>
       <li class="tnode child" data-tab="materials"><span class="ti">▣</span> Materials</li>
+      <li class="tnode child" data-tab="standards"><span class="ti">§</span> Standards &amp; metadata</li>
       <li class="tnode child" data-tab="validation"><span class="ti">✓</span> Validation</li>
       <li class="tnode group">Analyses</li>
       <li class="tnode child active" data-tab="slope"><span class="ti">▦</span> Slope stability</li>
@@ -108,9 +109,38 @@
     <!-- MATERIALS -->
     <div id="props-materials" class="propset">
       <div class="props-title">Materials library <small>shared by all analyses</small></div>
+      <label>Search<input id="mat_search" type="search" placeholder="name or classification…"></label>
       <div id="mat_table" class="mat-table"></div>
-      <button id="mat_add" class="minor">+ Add material</button>
-      <p class="note">Edit values here; analyses pick a material and inherit its properties (you can still override per analysis).</p>
+      <div class="geo-actions">
+        <button id="mat_add" class="minor">+ Add material</button>
+        <button id="mat_export" class="minor" title="Export the material library as a .json file">Export library</button>
+        <button id="mat_import" class="minor" title="Import materials from a .json library (merges)">Import library</button>
+      </div>
+      <p class="note">Seeded soils are marked <b>illustrative</b> — educational defaults, <b>not</b> verified design values for any site. Record the source, test method and approval for site data. Out-of-range values are flagged, never silently changed. No Australian Standard supplies universal design parameters.</p>
+    </div>
+
+    <!-- STANDARDS & METADATA -->
+    <div id="props-standards" class="propset">
+      <div class="props-title">Standards &amp; metadata <small>registers — not a compliance engine</small></div>
+      <fieldset>
+        <legend>Project metadata</legend>
+        <label>Site / location<input id="meta_site" type="text" data-m="site"></label>
+        <label>Author<input id="meta_author" type="text" data-m="author"></label>
+        <label>Checker<input id="meta_checker" type="text" data-m="checker"></label>
+        <label>Design situation<input id="meta_design" type="text" data-m="designSituation" placeholder="e.g. long-term drained, static"></label>
+        <label>Jurisdiction<input id="meta_jur" type="text" data-m="jurisdiction"></label>
+        <label>Notes<textarea id="meta_notes" data-m="notes" rows="2"></textarea></label>
+      </fieldset>
+      <fieldset>
+        <legend>Standards register</legend>
+        <div id="std_table" class="std-table"></div>
+        <button id="std_add" class="minor">+ Add standard</button>
+      </fieldset>
+      <fieldset>
+        <legend>Design criteria (user-entered)</legend>
+        <div id="crit_table" class="std-table"></div>
+        <button id="crit_add" class="minor">+ Add criterion</button>
+      </fieldset>
     </div>
 
     <!-- VALIDATION -->
@@ -348,6 +378,7 @@
     <div class="vp-stage">
       <div id="vp-geometry" class="vp"><canvas id="geom_canvas"></canvas><div id="geom_hud" class="geom-hud"></div></div>
       <div id="vp-materials" class="vp"><div class="vp-note"><b>Materials library</b><br>Define soils here, then select them in each analysis. This is project data, not a solver — there is nothing to compute.</div></div>
+      <div id="vp-standards" class="vp"><div id="std_summary" class="std-summary"></div></div>
       <div id="vp-validation" class="vp"><div class="vp-note"><b>Numerical validation</b><br>Run the benchmark suite (left) to see each method's analytical evidence, error, and tolerance. A method is marked Verified only when its benchmarks pass.</div></div>
       <div id="vp-slope" class="vp active"><canvas id="s_canvas"></canvas></div>
       <div id="vp-seep" class="vp"><canvas id="p_canvas"></canvas></div>
@@ -369,7 +400,8 @@
     <div class="chat-head">
       <span class="chat-title"><span class="dot"></span> AI assistant</span>
       <span class="chat-prov" id="chat_prov">Offline</span>
-      <button id="chat_settings" class="chat-ico" title="AI settings">⚙</button>
+      <button id="chat_manual" class="chat-ico" title="Manual mode — copy a prompt to your ChatGPT / Claude / Gemini subscription">📋</button>
+      <button id="chat_settings" class="chat-ico" title="AI connections &amp; settings">⚙</button>
       <button id="chat_collapse" class="chat-ico" title="Hide chat">✕</button>
     </div>
     <div id="chat_log" class="chat-log"></div>
@@ -384,12 +416,20 @@
 
 <dialog id="ai_dialog">
   <form method="dialog">
-    <div class="dlg-head">AI assistant settings</div>
+    <div class="dlg-head">AI connections &amp; settings</div>
     <div class="dlg-body">
-      <p>The chat works offline with a built-in interpreter for common commands.
-      For full natural-language chat, pick a provider and add its API key. The key
-      is stored only in this browser (localStorage) and sent directly to the
-      provider you choose — never anywhere else.</p>
+      <div class="ai-modes">
+        <b>Three ways to use AI with GeoCalc:</b>
+        <ol>
+          <li><b>Offline interpreter</b> — built-in, no account, handles common commands.</li>
+          <li><b>Manual mode (📋)</b> — uses your existing <b>ChatGPT Plus / Claude Pro / Gemini</b> subscription in its own web app: GeoCalc builds a prompt, you paste it there and paste the reply back. No API key, no extra bill.</li>
+          <li><b>API mode (below)</b> — direct calls with your own API key. <b>This bills your API account separately from any consumer subscription.</b></li>
+        </ol>
+        <p class="note">A consumer subscription (Plus/Pro) does <b>not</b> grant API access to third-party apps, so GeoCalc cannot call those subscriptions directly — use Manual mode for them. Verify each provider's current terms before use.</p>
+      </div>
+      <p>For API mode, pick a provider and add its API key. The key is stored only
+      in this browser (localStorage) and sent directly to the provider you choose
+      — never anywhere else.</p>
       <label>Provider
         <select id="ai_provider">
           <option value="offline">Built-in (offline, no key)</option>
@@ -417,7 +457,46 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "9.0.0";</script>
+<dialog id="ai_manual_dialog">
+  <form method="dialog">
+    <div class="dlg-head">Manual AI — use your own subscription</div>
+    <div class="dlg-body">
+      <p class="note">GeoCalc builds a prompt with the context you pick below. <b>Copy</b> it,
+      open your provider's web app, paste it there, then paste the reply back here.
+      Opening the provider does <b>not</b> send anything automatically — you stay in control
+      of what leaves this device. Treat the reply as untrusted: GeoCalc never applies it to
+      your project automatically; numerical results always come from the solver.</p>
+      <div class="man-ctx">
+        <b>Include in the prompt:</b>
+        <label class="inline"><input type="checkbox" id="mx_summary" checked> Project summary &amp; units</label>
+        <label class="inline"><input type="checkbox" id="mx_inputs" checked> Current analysis inputs</label>
+        <label class="inline"><input type="checkbox" id="mx_results" checked> Current result</label>
+        <label class="inline"><input type="checkbox" id="mx_materials"> Materials library</label>
+        <label class="inline"><input type="checkbox" id="mx_geometry"> Geometry regions</label>
+      </div>
+      <label>Your question
+        <input id="man_question" type="text" placeholder="e.g. explain this factor of safety and suggest checks">
+      </label>
+      <label>Prompt (editable — redact anything before copying)
+        <textarea id="man_prompt" rows="8" class="man-prompt"></textarea>
+      </label>
+      <div class="man-actions">
+        <button type="button" id="man_copy" class="minor">Copy prompt</button>
+        <a id="man_open_chatgpt" class="minor man-link" href="https://chatgpt.com/" target="_blank" rel="noopener">Open ChatGPT ↗</a>
+        <a id="man_open_claude" class="minor man-link" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude ↗</a>
+        <a id="man_open_gemini" class="minor man-link" href="https://gemini.google.com/app" target="_blank" rel="noopener">Open Gemini ↗</a>
+      </div>
+      <label>Paste the AI's reply here (for your reference — not applied automatically)
+        <textarea id="man_reply" rows="5" placeholder="paste the response…"></textarea>
+      </label>
+    </div>
+    <div class="dlg-foot">
+      <button class="secondary" value="cancel">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<script>window.GC_VERSION = "10.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>

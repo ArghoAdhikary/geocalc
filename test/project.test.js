@@ -47,6 +47,24 @@ test("v1 project (no geometry) migrates to v2 with an empty geometry", () => {
   assert.strictEqual(up.schemaVersion, 2);
   assert.ok(up.geometry && Array.isArray(up.geometry.regions) && up.geometry.regions.length === 0);
 });
+test("normalizeMaterial fills defaults without overwriting given values", () => {
+  const m = P.normalizeMaterial({ id: "x", name: "Silt", phi: 28 });
+  assert.strictEqual(m.phi, 28);
+  assert.strictEqual(m.drainage, "drained");
+  assert.strictEqual(m.gamma, 18);
+  assert.ok("gammaSat" in m && "cu" in m && "source" in m && "color" in m);
+});
+test("materialWarnings flags out-of-range and inconsistent values, silently changes nothing", () => {
+  const m = P.normalizeMaterial({ id: "x", name: "Bad", phi: 80, gamma: 20, gammaSat: 15 });
+  const w = P.materialWarnings(m);
+  assert.ok(w.some(s => /phi/.test(s)), "φ out of range should be flagged");
+  assert.ok(w.some(s => /saturated/.test(s)), "γsat < γ should be flagged");
+  assert.strictEqual(m.phi, 80, "the value itself must not be changed");
+});
+test("seeded materials are marked illustrative and carry a colour", () => {
+  const pr = P.newProject();
+  assert.ok(pr.materials.every(m => m.illustrative === true && typeof m.color === "string"));
+});
 test("a project with geometry round-trips losslessly", () => {
   const pr = P.newProject("Has geometry");
   pr.geometry.regions.push({ id: "rgn_x", name: "Fill", materialId: "mat_fill",

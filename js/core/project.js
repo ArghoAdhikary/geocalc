@@ -26,12 +26,42 @@
     return prefix + "_" + Math.random().toString(36).slice(2, 9);
   }
 
+  // Full material record (Phase I). All fields beyond id/name are optional and
+  // defaulted by normalizeMaterial, so older project files upgrade softly.
+  const MATERIAL_DEFAULTS = {
+    classification: "", color: "#c9b88a", description: "",
+    gamma: 18, gammaSat: 19,          // bulk / saturated unit weight (kN/m³)
+    c: 0, phi: 30,                    // effective (drained) strength: c′, φ′
+    cu: 0,                            // undrained shear strength (kPa)
+    drainage: "drained",             // "drained" | "undrained"
+    k: 1.0,                           // permeability (m/day)
+    E: 30, nu: 0.30,                  // Young's modulus (MPa), Poisson's ratio
+    source: "", testMethod: "", date: "", uncertainty: "", applicability: "", approvedBy: "",
+    illustrative: true                // seeded example, not site-verified
+  };
+  function normalizeMaterial(m) { return Object.assign({}, MATERIAL_DEFAULTS, m || {}); }
+
   function defaultMaterials() {
     return [
-      { id: "mat_fill",  name: "Fill",          gamma: 18, c: 10, phi: 25, E: 30, nu: 0.30, k: 1.0 },
-      { id: "mat_clay",  name: "Stiff clay",    gamma: 19, c: 25, phi: 22, E: 45, nu: 0.35, k: 0.001 },
-      { id: "mat_sand",  name: "Dense sand",    gamma: 20, c: 0,  phi: 36, E: 60, nu: 0.28, k: 5.0 }
-    ];
+      { id: "mat_fill", name: "Fill",       classification: "Compacted fill",  color: "#d9c38a", gamma: 18, gammaSat: 19.5, c: 10, phi: 25, cu: 0,  drainage: "drained",   E: 30, nu: 0.30, k: 1.0,   illustrative: true },
+      { id: "mat_clay", name: "Stiff clay", classification: "CL/CH clay",      color: "#aec9ec", gamma: 19, gammaSat: 19.5, c: 25, phi: 22, cu: 75, drainage: "undrained", E: 45, nu: 0.35, k: 0.001, illustrative: true },
+      { id: "mat_sand", name: "Dense sand", classification: "SW/SP sand",      color: "#e7cf8a", gamma: 20, gammaSat: 21.0, c: 0,  phi: 36, cu: 0,  drainage: "drained",   E: 60, nu: 0.28, k: 5.0,   illustrative: true }
+    ].map(normalizeMaterial);
+  }
+
+  // Physical-range advisories (do not silently change user input; just flag).
+  const MATERIAL_RANGES = {
+    gamma: [10, 24], gammaSat: [12, 24], c: [0, 200], phi: [0, 50], cu: [0, 500],
+    k: [1e-8, 1e4], E: [0.1, 2000], nu: [0, 0.499]
+  };
+  function materialWarnings(m) {
+    const w = [];
+    for (const f in MATERIAL_RANGES) {
+      const [lo, hi] = MATERIAL_RANGES[f]; const v = +m[f];
+      if (m[f] != null && m[f] !== "" && (v < lo || v > hi)) w.push(`${f} = ${v} is outside the typical range ${lo}–${hi}`);
+    }
+    if (m.gammaSat && m.gamma && +m.gammaSat < +m.gamma) w.push("saturated unit weight is below the bulk unit weight");
+    return w;
   }
 
   // The analysis parameter blocks mirror the solver inputs; each references a
@@ -56,12 +86,32 @@
     };
   }
 
+  function defaultMeta() {
+    return { site: "", author: "", checker: "", designSituation: "", jurisdiction: "Australia", notes: "" };
+  }
+
+  // Candidate standards families to ASSESS — not assumed universal requirements.
+  // Seeded with status "verification-required" and NO invented clause numbers,
+  // editions or factors; the engineer verifies edition, scope and applicability.
+  function defaultStandards() {
+    const s = (title, identifier, applicableFeature) => ({
+      id: uid("std"), title, identifier, edition: "", amendments: "",
+      applicableFeature, link: "", lastVerified: "", status: "verification-required"
+    });
+    return [
+      s("Geotechnical site investigations", "AS 1726", "Site investigation, soil description"),
+      s("Methods of testing soils for engineering purposes", "AS 1289 (series)", "Laboratory/field soil parameters"),
+      s("Guidelines on earthworks for commercial and residential developments", "AS 3798", "Earthworks, compacted fill"),
+      s("Earth-retaining structures", "AS 4678", "Retaining walls, reinforced soil")
+    ];
+  }
+
   function newProject(name) {
     const now = new Date().toISOString();
     return {
       schemaVersion: SCHEMA_VERSION,
       app: APP,
-      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "9.0.0",
+      appVersion: (typeof window !== "undefined" && window.GC_VERSION) || "10.0.0",
       name: name || "Untitled project",
       created: now,
       modified: now,
@@ -69,9 +119,12 @@
       settings: {
         units: { length: "m", unitWeight: "kN/m3", stress: "kPa", permeability: "m/day", angle: "deg" }
       },
+      meta: defaultMeta(),              // editable project metadata (Phase J)
       materials: defaultMaterials(),
       analyses: defaultAnalyses(),
-      geometry: { regions: [] }   // shared 2D geometry model (Phase H)
+      geometry: { regions: [] },        // shared 2D geometry model (Phase H)
+      standards: defaultStandards(),    // standards register (Phase J)
+      criteria: []                      // user-entered design criteria (Phase J)
     };
   }
 
@@ -121,6 +174,10 @@
       throw new Error("Not a recognised GeoCalc Pro project file.");
     obj = migrate(obj);
     if (!obj.geometry || !Array.isArray(obj.geometry.regions)) obj.geometry = { regions: [] };
+    if (Array.isArray(obj.materials)) obj.materials = obj.materials.map(normalizeMaterial);
+    if (!obj.meta) obj.meta = defaultMeta();
+    if (!Array.isArray(obj.standards)) obj.standards = [];
+    if (!Array.isArray(obj.criteria)) obj.criteria = [];
     validate(obj);
     return obj;
   }
@@ -136,6 +193,8 @@
   return {
     SCHEMA_VERSION, APP, uid,
     newProject, bumpRevision, materialById,
-    serialize, deserialize, migrate, validate, stableStringify
+    serialize, deserialize, migrate, validate, stableStringify,
+    MATERIAL_DEFAULTS, normalizeMaterial, materialWarnings, defaultMaterials,
+    defaultMeta, defaultStandards
   };
 });

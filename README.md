@@ -19,7 +19,8 @@ its analytical benchmarks pass — and these run in CI before every release.
 | **Thermal** | 1D steady and transient conduction | Verified (envelope) |
 | **3D flow** | 3D volumetric mesh + steady flow, mid-depth slice view | Verified (envelope) |
 | **Probabilistic** | Monte Carlo slope reliability — P(failure), reliability index β | Verified (envelope) |
-| **Materials** | Shared soil library feeding the analyses | — |
+| **Materials** | Editable soil library: colour, classification, bulk/saturated unit weight, drained (c′, φ′) **and** undrained (cu) strength with a drainage selector, permeability, stiffness, provenance (source/test/date/approval), range advisories, search, duplicate, import/export | — |
+| **Standards & metadata** | Project metadata + an editable **standards register** (AS 1726 / AS 1289 / AS 3798 / AS 4678 as candidates to *verify*) and a user-entered **design-criteria** register — a register, not a compliance engine | — |
 | **Validation** | Live benchmark evidence matrix (all analytical cases) | — |
 
 Every *Verified* method states its **envelope**; results carry a disclaimer;
@@ -28,9 +29,19 @@ per the spec). Unverified methods are clearly labeled **demonstration** output.
 
 ## AI assistant
 
-A chat panel drives the app in plain language. It works offline with a built-in
-interpreter, and can use **Claude, OpenAI, Gemini, or any OpenAI-compatible
-endpoint** with your own key (stored only on your machine).
+Three honest ways to use AI, none required:
+
+1. **Offline interpreter** — built-in, no account, handles common commands.
+2. **Manual mode (📋)** — use your existing **ChatGPT Plus / Claude Pro / Gemini**
+   subscription in its own web app: GeoCalc builds a prompt from the context you
+   pick, you copy it, paste it into the provider, and paste the reply back. No API
+   key and no extra bill. Opening the provider sends nothing automatically, and the
+   reply is never applied to your project on its own — numerical results always come
+   from the solver.
+3. **API mode** — direct calls with your own key for **Claude, OpenAI, Gemini, or any
+   OpenAI-compatible endpoint** (key stored only on your machine). This bills your API
+   account **separately** from any consumer subscription; a consumer subscription does
+   not grant third-party API access.
 
 ## Headless / scripting
 
