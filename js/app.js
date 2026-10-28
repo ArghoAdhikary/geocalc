@@ -209,6 +209,76 @@
     note("Drawdown curve exported (CSV)");
   }
 
+  // ---- Parametric study (sweep one parameter, plot critical FoS) ----
+  const PARAM_KEY = { s_phi: "phi", s_c: "c", s_beta: "beta", s_H: "H", s_gamma: "gamma", s_ru: "ru", s_wt: "wt", s_wtHigh: "wtHigh", s_wtLow: "wtLow" };
+  const PARAM_LABEL = { s_phi: "φ′ (°)", s_c: "c′ (kPa)", s_beta: "β (°)", s_H: "H (m)", s_gamma: "γ (kN/m³)", s_ru: "rᵤ", s_wt: "water table (m)", s_wtHigh: "high pool (m)", s_wtLow: "final pool (m)" };
+  let lastParam = null;
+  function runParametricStudy() {
+    const base = readSlope();
+    const pid = $("s_par").value, key = PARAM_KEY[pid];
+    const from = num("s_par_from"), to = num("s_par_to"), steps = Math.max(2, num("s_par_steps") | 0);
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const v = +(from + (to - from) * i / steps).toFixed(4);
+      const p = Object.assign({}, base); p[key] = v;
+      if (key === "wtLow" && p.porePressureMode === "drawdown") p.poolExt = v;
+      if (key === "wtHigh" && p.porePressureMode === "drawdown") p.wtHigh = v;
+      const out = window.Slope.analyze(p);
+      pts.push({ x: v, fos: out.best ? out.best.fos : null });
+    }
+    lastParam = { pid, key, label: PARAM_LABEL[pid], pts };
+    const valid = pts.filter(p => p.fos != null);
+    const r = $("s_result"), conv = $("s_conv");
+    if (!valid.length) { r.innerHTML = '<span class="muted">No valid factor of safety over that range.</span>'; conv.style.display = "none"; return; }
+    const lo = valid.reduce((a, b) => b.fos < a.fos ? b : a), hi = valid.reduce((a, b) => b.fos > a.fos ? b : a);
+    r.innerHTML = `<div class="muted" style="font-weight:700;margin-bottom:4px">Parametric study — ${PARAM_LABEL[pid]}</div>
+      <table>
+       <tr><td>Range</td><td>${from} → ${to} (${steps} steps)</td></tr>
+       <tr><td>FoS span</td><td>${lo.fos.toFixed(3)} … ${hi.fos.toFixed(3)}</td></tr>
+       <tr><td>Min FoS</td><td class="${lo.fos < 1 ? "fos-bad" : lo.fos < 1.3 ? "fos-warn" : "fos-good"}">${lo.fos.toFixed(3)} at ${PARAM_LABEL[pid].split(" ")[0]} = ${lo.x}</td></tr>
+      </table>`;
+    disclaim("slope", "s_result");
+    conv.style.display = "";
+    conv.innerHTML = `<div class="muted" style="margin-bottom:4px">Critical factor of safety vs ${PARAM_LABEL[pid]}</div>` + paramSVG(valid, PARAM_LABEL[pid]);
+    setStatus("slope", `Parametric study (${PARAM_LABEL[pid]}) — FoS ${lo.fos.toFixed(3)}…${hi.fos.toFixed(3)}`, "Parametric");
+    note("Parametric study: " + valid.length + " points");
+  }
+  function paramSVG(pts, label) {
+    const W = 280, H = 160, pl = 40, pb = 26, pt = 8, pr = 10;
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.fos);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    let y0 = Math.min(0, Math.min(...ys)), y1 = Math.max(1.6, Math.max(...ys) * 1.05);
+    const sx = v => pl + (v - x0) / (x1 - x0 || 1) * (W - pl - pr);
+    const sy = v => (H - pb) - (v - y0) / (y1 - y0 || 1) * (H - pt - pb);
+    const path = pts.map((p, i) => (i ? "L" : "M") + sx(p.x).toFixed(1) + "," + sy(p.fos).toFixed(1)).join(" ");
+    const one = (y1 >= 1 && y0 <= 1) ? `<line x1="${pl}" y1="${sy(1).toFixed(1)}" x2="${W - pr}" y2="${sy(1).toFixed(1)}" stroke="#e5604d" stroke-dasharray="3 3"/><text x="${pl + 2}" y="${(sy(1) - 2).toFixed(1)}" font-size="8" fill="#e5604d">FoS = 1</text>` : "";
+    const ticksY = [y0, (y0 + y1) / 2, y1].map(v => `<text x="2" y="${(sy(v) + 3).toFixed(1)}" font-size="8" fill="var(--muted,#789)">${v.toFixed(1)}</text>`).join("");
+    const ticksX = [x0, (x0 + x1) / 2, x1].map(v => `<text x="${sx(v).toFixed(1)}" y="${H - 6}" font-size="8" text-anchor="middle" fill="var(--muted,#789)">${(+v).toFixed(v % 1 ? 1 : 0)}</text>`).join("");
+    const dots = pts.map(p => `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.fos).toFixed(1)}" r="1.8" fill="#1f6fd0"/>`).join("");
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:320px">
+      <rect x="${pl}" y="${pt}" width="${W - pl - pr}" height="${H - pt - pb}" fill="none" stroke="var(--border,#345)"/>
+      ${one}<path d="${path}" fill="none" stroke="#1f6fd0" stroke-width="1.8"/>${dots}
+      ${ticksY}${ticksX}
+      <text x="${(pl + W - pr) / 2}" y="${H - 1}" font-size="8" text-anchor="middle" fill="var(--muted,#789)">${label}</text>
+    </svg>`;
+  }
+  function exportParamCSV() {
+    if (!lastParam) { note("Run the parametric study first"); return; }
+    const rows = [[lastParam.label.replace(/,/g, ";"), "critical_FoS"]];
+    for (const p of lastParam.pts) rows.push([p.x, p.fos == null ? "" : p.fos.toFixed(5)]);
+    downloadFile((project.name || "slope") + "-parametric.csv", rows.map(r => r.join(",")).join("\n"), "text/csv");
+    note("Parametric curve exported (CSV)");
+  }
+  function exportSlicesCSV() {
+    if (!(last.slope && last.slope.out && last.slope.out.best && last.slope.out.best.slices)) { note("Compute a slope result first"); return; }
+    const b = last.slope.out.best;
+    const head = `# GeoCalc Pro critical slip surface\n# FoS=${b.fos.toFixed(4)}, centre=(${b.xc.toFixed(3)},${b.yc.toFixed(3)}), R=${b.R.toFixed(3)}\n`;
+    const rows = [["slice", "x_mid_m", "base_y_m", "top_y_m", "alpha_deg", "width_b_m", "base_len_l_m", "weight_W_kN", "pore_u_kPa"]];
+    b.slices.forEach((s, i) => rows.push([i + 1, s.xm.toFixed(4), s.baseY.toFixed(4), s.topY.toFixed(4), (s.alpha * 180 / Math.PI).toFixed(3), s.b.toFixed(4), s.dl.toFixed(4), s.W.toFixed(3), s.u.toFixed(3)]));
+    downloadFile((project.name || "slope") + "-slices.csv", head + rows.map(r => r.join(",")).join("\n"), "text/csv");
+    note("Critical-surface slices exported (CSV)");
+  }
+
   draw.slope = ({ p, out }) => {
     const { ctx, w, h } = fitCanvas($("s_canvas"));
     ctx.clearRect(0, 0, w, h);
@@ -1394,7 +1464,7 @@
 
   // ---- Project <-> DOM sync and file operations ----
   const DOM_MAP = {
-    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", gamma: "s_gamma", c: "s_c", phi: "s_phi", ru: "s_ru", method: ["s_method", "str"], search: ["s_search", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt", piezoText: ["s_piezo", "str"], e0: "s_e0", e1: "s_e1", x0: "s_x0", x1: "s_x1", een: "s_een", enr: "s_enr", gammaSat: "s_gammaSat", wtHigh: "s_wtHigh", wtLow: "s_wtLow", ddSteps: "s_ddSteps" },
+    slope: { materialId: ["s_mat", "str"], H: "s_H", beta: "s_beta", crest: "s_crest", toe: "s_toe", gamma: "s_gamma", c: "s_c", phi: "s_phi", ru: "s_ru", method: ["s_method", "str"], search: ["s_search", "str"], nslices: "s_nslices", grid: "s_grid", porePressureMode: ["s_pp", "str"], wt: "s_wt", piezoText: ["s_piezo", "str"], e0: "s_e0", e1: "s_e1", x0: "s_x0", x1: "s_x1", een: "s_een", enr: "s_enr", gammaSat: "s_gammaSat", wtHigh: "s_wtHigh", wtLow: "s_wtLow", ddSteps: "s_ddSteps", par: ["s_par", "str"], parFrom: "s_par_from", parTo: "s_par_to", parSteps: "s_par_steps" },
     seep:  { materialId: ["p_mat", "str"], W: "p_W", D: "p_D", nx: "p_nx", hu: "p_hu", hd: "p_hd", k: "p_k", wall_on: ["p_wall_on", "bool"], wall_x: "p_wall_x", wall_d: "p_wall_d" },
     sigma: { materialId: ["g_mat", "str"], W: "g_W", H: "g_H", nx: "g_nx", E: "g_E", nu: "g_nu", gamma: "g_gamma", q: "g_q", qw: "g_qw", field: ["g_field", "str"] },
     consolidation: { H: "c_H", cv: "c_cv", u0: "c_u0", drainage: ["c_drain", "str"], tEnd: "c_tEnd", nz: "c_nz" },
@@ -1622,6 +1692,9 @@ ${benchRows ? `<h2>Numerical validation evidence</h2><table><tr><th>Status</th><
     $("s_search").addEventListener("change", syncSlopeRows);
     $("s_dd_run").addEventListener("click", runDrawdownStudy);
     $("s_dd_csv").addEventListener("click", exportDrawdownCSV);
+    $("s_par_run").addEventListener("click", runParametricStudy);
+    $("s_par_csv").addEventListener("click", exportParamCSV);
+    $("s_slices_csv").addEventListener("click", exportSlicesCSV);
     ["s_H", "s_beta", "s_crest", "s_toe"].forEach(id => $(id).addEventListener("change", clearSlopeProfile));
     geomEditor.init();
     syncSlopeRows();

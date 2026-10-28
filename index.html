@@ -227,6 +227,29 @@
           <label>Radius increments<input id="s_enr" type="number" value="12" step="1" min="3" max="25"></label>
         </div>
       </fieldset>
+      <fieldset>
+        <legend>Parametric study</legend>
+        <label>Parameter to sweep
+          <select id="s_par">
+            <option value="s_phi">Friction angle φ′ (°)</option>
+            <option value="s_c">Cohesion c′ (kPa)</option>
+            <option value="s_beta">Slope angle β (°)</option>
+            <option value="s_H">Slope height H (m)</option>
+            <option value="s_gamma">Unit weight γ (kN/m³)</option>
+            <option value="s_ru">Pore pressure ratio rᵤ</option>
+            <option value="s_wt">Water-table elevation (m)</option>
+            <option value="s_wtHigh">Pre-drawdown pool (m)</option>
+            <option value="s_wtLow">Final pool (m)</option>
+          </select>
+        </label>
+        <label>From / to / steps
+          <span style="display:flex;gap:4px"><input id="s_par_from" type="number" value="20" step="1"><input id="s_par_to" type="number" value="40" step="1"><input id="s_par_steps" type="number" value="10" step="1" min="2" max="60"></span>
+        </label>
+        <button id="s_par_run" class="minor" type="button">Run parametric study</button>
+        <button id="s_par_csv" class="minor" type="button">Export curve (CSV)</button>
+        <button id="s_slices_csv" class="minor" type="button">Export critical-surface slices (CSV)</button>
+        <span class="note">Sweeps one parameter, holding the rest, and plots the critical factor of safety. For research/sensitivity studies; export feeds Python/MATLAB/R.</span>
+      </fieldset>
       <div id="s_result" class="result"></div>
       <div id="s_conv" class="result" style="display:none"></div>
     </div>
@@ -513,7 +536,7 @@
   </form>
 </dialog>
 
-<script>window.GC_VERSION = "12.0.0";</script>
+<script>window.GC_VERSION = "13.0.0";</script>
 <script src="js/core/units.js"></script>
 <script src="js/core/capabilities.js"></script>
 <script src="js/core/project.js"></script>

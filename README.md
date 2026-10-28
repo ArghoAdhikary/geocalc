@@ -12,6 +12,7 @@ its analytical benchmarks pass — and these run in CI before every release.
 | **Geometry editor** | Draw/edit closed polygon regions (points, polylines, regions) by mouse **and** an editable coordinate table; grid/snap, pan/zoom, undo/redo, per-region material, validation (self-intersection, zero area, overlap), slope/two-layer templates, and “send ground profile → Slope” | Implemented (algorithms unit-tested) |
 | **Slope stability** | Method of slices — Fellenius, Bishop, **Spencer** (force + moment); **grid** or **entry-and-exit** circular search; rᵤ, water-table, piezometric-line, **or rapid-drawdown** pore pressure | Verified (envelope) |
 | **Rapid drawdown** | Effective-stress drawdown study: before (full pool) / long-term drained / **critical undrained** across a sweep of pool levels → **FoS-vs-drawdown curve** + CSV export (γ_sat weights, hydrostatic buoyancy, conservative no-dissipation bound) | Verified (envelope) |
+| **Parametric study** | Sweep any slope parameter (φ′, c′, β, H, γ, rᵤ, water levels) → **critical-FoS-vs-parameter curve**; export the curve and the **critical-surface slices** as CSV for Python/MATLAB/R | — |
 | **Seepage** | 2D steady (FD) and transient (implicit) saturated flow, cutoff wall | Verified (envelope) |
 | **FE flow** | Finite-element meshing for steady flow (triangular elements) | Verified (envelope) |
 | **Stress–deformation** | 2D plane-strain linear-elastic FEM, self-weight + surcharge | Implemented (unverified) |
